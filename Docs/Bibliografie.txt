@@ -1,0 +1,7 @@
+https://github.com/microsoft/onnxruntime?tab=readme-ov-file
+https://datatracker.ietf.org/doc/html/rfc5424
+https://documentation.wazuh.com/current/getting-started/architecture.html
+https://www.researchgate.net/publication/354413406_Design_and_Implementation_of_Network_Monitoring_System_for_Campus_Infrastructure_Using_Software_Agents
+https://arxiv.org/html/2508.10052v1
+https://www.academia.edu/97375488/Design_and_Implementation_of_Network_Monitoring_System_for_Campus_Infrastructure_Using_Software_Agents
+https://duckduckgo.com/?q=Suricata+(The+Network+Inspector)&atb=v455-1&ia=web

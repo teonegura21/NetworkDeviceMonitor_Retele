@@ -1,0 +1,41 @@
+Indicații pentru rezolvarea Temei 2
+
+Tema va conține două livrabile: un raport tehnic (1) și o implementare (2).
+
+
+  1. Raportul tehnic
+
+Raportul tehnic trebuie elaborat conform formatului LNCS, disponibil pe pagina web Springer LNCS Guidelines (https://www.springer.com/gp/computer-science/lncs/conference-proceedings-guidelines). Raportul va urma o structură divizată în secțiuni, astfel:
+
+1. Introducere: prezentați viziunea generală și obiectivele proiectului.
+2. Tehnologii Aplicate: detaliați tehnologiile specifice folosite (de exemplu TCP, UDP etc.), cu accent pe aspectele relevante pentru proiect. Explicați motivațiile din spatele selecției acestor tehnologii.
+3. Structura Aplicației: expuneți conceptele folosite in modelare si prezentați inclusiv o diagramă detaliată a aplicației.
+4. Protocolul de Comunicare: prezentați specificația completă a protocolului la nivelul aplicație pe care îl veți implementa.
+5. Scenarii de Utilizare: descrieți trei scenarii reale de utilizare în cazul unei execuții cu succes și trei în caz de eșec.
+6. Concluzii: analizați potențialele îmbunătățiri ale soluției propuse.
+7. Referințe Bibliografice
+
+Observații:
+- secțiunile 1 si 2 vor avea dimensiunea de maxim o pagina (cumulat);
+- pentru realizarea diagramei detaliate a aplicației, puteti apela si la instrumente de tipul: https://sequencediagram.org
+
+
+  2. Implementarea
+
+Implementarea va consta în realizarea unei aplicații server și a unei aplicații client.
+
+Serverul va avea următoarele caracteristici/funcționalități (conform detaliilor stipulate în raportul tehnic):
+- implementarea concurenței;
+- implementarea protocolului de comunicare; se va implementa cel puțin partea de recunoaștere a comenzilor (și a parametrilor, dacă este cazul), fără funcționalitățile propriu-zise; serverul va returna clientului un mesaj de confirmare a identificării fiecărei comenzi specifice.
+
+Clientul va avea următoarele caracteristici/functionalități (conform detaliilor stipulate în raportul tehnic):
+- implementarea protocolului de comunicare;
+- comunicarea cu serverul (transmiterea comenzilor către acesta și recepționarea mesajelor aferente);
+- în cazul proiectelor ce constau doar dintr-un client cu interfață grafică (explicit în enunț), trebuie să se dezvolte un prototip ce include și o parte din interfața grafică, care să demonstreze comunicarea cu serverul în cazul tuturor funcționalităților ce urmează a fi implementate.
+
+Observații:
+- codul trebuie să fie compilabil și rulabil;
+- demo-ul va include și prezentarea schimbului de date dintre client și server folosind Wireshark (https://www.wireshark.org/).
+
+
+Termenul limită pentru predare este laboratorul din săptămâna a 11-a. Se așteaptă o abordare creativă și personală în dezvoltarea temei, pentru a asigura unicitatea și originalitatea temei dumneavoastră. Nota maximă posibilă depinde de categoria proiectului și anume: cat. A - 10p, cat. B - 8p, cat. C - 6p.
