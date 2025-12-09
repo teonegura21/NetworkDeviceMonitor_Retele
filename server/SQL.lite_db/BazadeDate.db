@@ -1,0 +1,24 @@
+-- 1. TABELA USERS (Clienții / Adminii rețelelor lor)
+CREATE TABLE Users (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- Identificator unic (id_client)
+    username    TEXT NOT NULL UNIQUE,
+    password    TEXT NOT NULL
+);
+
+-- 2. TABELA AGENTS (Endpoint-urile)
+CREATE TABLE Agents (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- id_endpoint
+    user_id     INTEGER,                            -- id_admin (Legătura cu Users)
+    hostname    TEXT,
+    ip_address  TEXT,
+    FOREIGN KEY(user_id) REFERENCES Users(id)       -- Constrângere: user_id trebuie să existe în Users
+);
+
+-- 3. TABELA LOGS (Istoricul)
+CREATE TABLE Logs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id    INTEGER,                            -- De la care agent a venit?
+    message     TEXT,                               -- Conținutul logului
+    timestamp   TEXT,
+    FOREIGN KEY(agent_id) REFERENCES Agents(id)
+);
