@@ -1,1 +1,7 @@
-Implementati o platforma de monitorizare a operatiunilor de retea si a incidentelor de securitate. Sa se realizeze o solutie ce afiseaza centralizat, intr-un dashboard, metrici si statistici generate din log-urile colectate din echipamente de retea, endpoints si servere. Platforma va fi multiuser, multithreaded, cu un dashboard configurabl, capabila sa colecteze nativ syslog, modulara – cu posibilitatea de a adauga surse de date, agenti si filtre. Implementarea presupune configurarea unei infrastructuri fizice sau virtuale cu echipamente active si/sau endpoints, pe care pentru testare se va putea instala software third party (agenti).
+Implementati o platforma de monitorizare a operatiunilor de retea si a incidentelor de securitate. 
+Sa se realizeze o solutie ce afiseaza centralizat, intr-un dashboard, metrici si statistici generate 
+din log-urile colectate din echipamente de retea, endpoints si servere. Platforma va fi multiuser, 
+multithreaded, cu un dashboard configurabl, capabila sa colecteze nativ syslog, modulara – 
+cu posibilitatea de a adauga surse de date, agenti si filtre. Implementarea presupune configurarea unei 
+infrastructuri fizice sau virtuale cu echipamente active si/sau endpoints, pe care pentru testare se va 
+putea instala software third party (agenti).

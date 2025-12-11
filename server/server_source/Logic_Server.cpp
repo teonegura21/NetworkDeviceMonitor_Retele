@@ -229,7 +229,6 @@ void Server::ProcseazaClient(int socket_client) {
       }
     }
   }
-
   close(socket_client);
   cout << "✓ Clientul " << socket_client << " deconectat" << endl;
 }
@@ -245,7 +244,6 @@ Server::~Server() {
       t.join();
     }
   }
-
   close(socket_server);
   cout << "Server oprit" << endl;
 }
@@ -255,6 +253,5 @@ void Server::AdaugaThreaduri(int numar) {
     threaduri_lucru.emplace_back(&Server::FunctieThreadLucrator, this);
     threaduri_curente++;
   }
-
-  cout << "⚡ Scalare! Acum avem " << threaduri_curente << " threaduri" << endl;
+  cout << "Acum avem " << threaduri_curente << " threaduri" << endl;
 }
