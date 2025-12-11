@@ -152,15 +152,32 @@ class MainWindow(QMainWindow):
             success, msg = self.client.connect(ip, port)
             if success:
                 self.log(msg)
-                self.btn_connect.setText("DISCONNECT")
-                self.btn_register.setEnabled(True)
-                self.btn_heartbeat.setEnabled(True)
-                self.statusbar.showMessage(f"Conectat la {ip}:{port}")
                 
-                # Pornim monitorizarea logurilor
-                self.monitor_thread = LogMonitorThread(self.client)
-                self.monitor_thread.log_signal.connect(self.log)
-                self.monitor_thread.start()
+                # Trimitem comanda LOGIN cu credentialele din UI
+                username = self.input_username.text()
+                password = self.input_password.text()
+                login_cmd = f"LOGIN {username} {password}"
+                
+                if self.client.send(login_cmd):
+                    self.log(f"🔐 Trimit LOGIN pentru {username}...")
+                    resp = self.client.receive()
+                    self.log(f"📥 {resp}")
+                    
+                    if "OK" in resp:
+                        # Autentificare reusita!
+                        self.btn_connect.setText("DISCONNECT")
+                        self.btn_register.setEnabled(True)
+                        self.btn_heartbeat.setEnabled(True)
+                        self.statusbar.showMessage(f"Autentificat ca {username} @ {ip}:{port}")
+                        
+                        # Pornim monitorizarea logurilor
+                        self.monitor_thread = LogMonitorThread(self.client)
+                        self.monitor_thread.log_signal.connect(self.log)
+                        self.monitor_thread.start()
+                    else:
+                        # Autentificare esuata
+                        QMessageBox.critical(self, "Eroare Login", "Username sau parola incorecta!")
+                        self.client.disconnect()
             else:
                 QMessageBox.critical(self, "Eroare", msg)
         else:

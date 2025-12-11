@@ -10,6 +10,8 @@ TipComanda ProcesorComenzi::RecunoasteTipComanda(const string &mesaj_text) {
   string tip;
   ss >> tip;
 
+  if (tip == "LOGIN")
+    return LOGIN;
   if (tip == "REGISTER")
     return REGISTER;
   if (tip == "HEARTBEAT")
@@ -24,6 +26,29 @@ TipComanda ProcesorComenzi::RecunoasteTipComanda(const string &mesaj_text) {
     return ACK;
 
   return NECUNOSCUT;
+}
+
+// Proceseaza comanda LOGIN
+// Format: LOGIN <username> <password>
+string ProcesorComenzi::ProceseazaLOGIN(const string &argumente,
+                                        int socket_client,
+                                        ManagerBazaDate *bd) {
+  stringstream ss(argumente);
+  string comanda, username, password;
+
+  ss >> comanda >> username >> password;
+
+  cout << "🔐 LOGIN incercare de la socket " << socket_client << endl;
+  cout << "   Username: " << username << endl;
+
+  // Verificam credentialele in baza de date
+  if (bd->Autentificare(username, password)) {
+    cout << "   ✅ Autentificare REUSITA pentru " << username << endl;
+    return GenereazaACK("OK", "Login successful");
+  } else {
+    cout << "   ❌ Autentificare ESUATA pentru " << username << endl;
+    return GenereazaACK("FAIL", "Invalid credentials");
+  }
 }
 
 // Proceseaza comanda REGISTER
@@ -69,17 +94,27 @@ string ProcesorComenzi::ProceseazaHEARTBEAT(const string &argumente,
 }
 
 // Proceseaza comanda BATCH_EVENT
-// Format: BATCH_EVENT <numar_evenimente> (restul sunt loguri, ignoram momentan)
+// Format: BATCH_EVENT <log_message>
 string ProcesorComenzi::ProceseazaBATCH_EVENT(const string &argumente,
                                               int socket_client,
                                               ManagerBazaDate *bd) {
+  // Extragem mesajul de log din argumente
+  stringstream ss(argumente);
+  string comanda, log_mesaj;
+  ss >> comanda;
+  getline(ss, log_mesaj); // Restul liniei este mesajul de log
+
+  // Curatam spatiul de la inceput
+  if (!log_mesaj.empty() && log_mesaj[0] == ' ') {
+    log_mesaj = log_mesaj.substr(1);
+  }
+
   cout << "📦 BATCH_EVENT primit de la socket " << socket_client << endl;
 
-  // Salvam un log generic in baza de date
-  bd->SalveazaLog("admin", "Batch event received from socket " +
-                               to_string(socket_client));
+  // Salvam log-ul real in baza de date
+  bd->SalveazaLog("admin", log_mesaj);
 
-  return GenereazaRESULTS("Processed events");
+  return GenereazaACK("OK", "Event received");
 }
 
 // Genereaza mesaj ACK

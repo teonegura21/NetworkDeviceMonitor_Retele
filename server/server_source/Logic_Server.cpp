@@ -194,6 +194,10 @@ void Server::ProcseazaClient(int socket_client) {
       string raspuns;
 
       switch (tip) {
+      case LOGIN:
+        raspuns = ProcesorComenzi::ProceseazaLOGIN(
+            comanda_curata, socket_client, this->baza_date);
+        break;
       case REGISTER:
         raspuns = ProcesorComenzi::ProceseazaREGISTER(
             comanda_curata, socket_client, this->baza_date);

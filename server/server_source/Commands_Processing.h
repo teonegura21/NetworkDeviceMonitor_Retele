@@ -6,6 +6,7 @@ using namespace std;
 
 // Tipuri de comenzi posibile
 enum TipComanda {
+  LOGIN,
   REGISTER,
   HEARTBEAT,
   BATCH_EVENT,
@@ -22,6 +23,8 @@ public:
 
   // Proceseaza fiecare tip de comanda (input string -> output string)
   // Acum primesc si pointer la Baza de Date pentru a face verificari/salvari
+  static string ProceseazaLOGIN(const string &argumente, int socket_client,
+                                ManagerBazaDate *bd);
   static string ProceseazaREGISTER(const string &argumente, int socket_client,
                                    ManagerBazaDate *bd);
   static string ProceseazaHEARTBEAT(const string &argumente, int socket_client,
