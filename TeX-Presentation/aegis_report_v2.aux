@@ -2,50 +2,55 @@
 \providecommand\hyper@newdestlabel[2]{}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
-\citation{wazuh}
-\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
-\citation{wazuh-github}
-\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Inspiration: Wazuh Security Platform}{2}{subsection.1.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {2}Applied Technologies}{2}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Application Structure}{3}{section.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Server Component}{3}{subsection.3.1}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces High-level architecture of NMS showing the client--server structure.}}{4}{figure.1}\protected@file@percent }
-\newlabel{fig:architecture}{{1}{4}{High-level architecture of NMS showing the client--server structure}{figure.1}{}}
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {1}Thread Pool Worker Implementation (Logic\_Server.cpp).}{4}{lstlisting.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Client Component}{5}{subsection.3.2}\protected@file@percent }
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {2}Log Monitoring Thread (client\_gui.py).}{5}{lstlisting.2}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Internal architecture of the Python client showing UI layer, network layer, monitoring threads, and signal/slot system.}}{6}{figure.2}\protected@file@percent }
-\newlabel{fig:client}{{2}{6}{Internal architecture of the Python client showing UI layer, network layer, monitoring threads, and signal/slot system}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Database Schema}{6}{subsection.3.3}\protected@file@percent }
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {3}SQL Schema Creation (C++ embedded string).}{6}{lstlisting.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Data Flow Summary}{7}{subsection.3.4}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Sequence diagram showing the complete data flow: connection, authentication, log monitoring, and database storage.}}{8}{figure.3}\protected@file@percent }
-\newlabel{fig:dataflow}{{3}{8}{Sequence diagram showing the complete data flow: connection, authentication, log monitoring, and database storage}{figure.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Communication Protocol}{9}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Message Format}{9}{subsection.4.1}\protected@file@percent }
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {4}Message format examples.}{9}{lstlisting.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Command Types}{9}{subsection.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Port Assignment}{9}{subsection.4.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Network port assignment.}}{9}{table.1}\protected@file@percent }
-\newlabel{tab:ports}{{1}{9}{Network port assignment}{table.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Wireshark Analysis}{10}{subsection.4.4}\protected@file@percent }
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {5}Example Wireshark TCP stream.}{10}{lstlisting.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Connection State Machine}{10}{subsection.4.5}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces State machine diagram showing client connection lifecycle: Disconnected, Connecting, Authenticating, Authenticated (with Monitoring substates), Reconnecting, and Disconnecting.}}{10}{figure.4}\protected@file@percent }
-\newlabel{fig:statemachine}{{4}{10}{State machine diagram showing client connection lifecycle: Disconnected, Connecting, Authenticating, Authenticated (with Monitoring substates), Reconnecting, and Disconnecting}{figure.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Real World Use Cases}{11}{section.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Successful Execution Scenarios}{11}{subsection.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Failure Scenarios and Handling}{11}{subsection.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{12}{section.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Potential Improvements}{12}{subsection.6.1}\protected@file@percent }
-\bibcite{tcpip}{1}
-\bibcite{sqlite}{2}
-\bibcite{pyqt6}{3}
-\bibcite{qt6}{4}
-\bibcite{posix}{5}
-\bibcite{cpp17}{6}
-\bibcite{wazuh}{7}
-\bibcite{wazuh-github}{8}
-\bibcite{rfc5424}{9}
-\bibcite{campus_nms}{10}
-\gdef \@abspage@last{13}
+\@writefile{toc}{\contentsline {title}{NMS(Network monitor system): Computer Network Monitor and Security Incidents Prevention System}{1}{chapter.1}\protected@file@percent }
+\@writefile{toc}{\authcount {1}}
+\@writefile{toc}{\contentsline {author}{Negura Teodor-Alexandru}{1}{chapter.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Applied Technologies}{2}{section.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Application Structure}{3}{section.1.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces High-level architecture of NMS showing the three-tier structure: Server, Clients, and Endpoint Agents.}}{3}{figure.1.1}\protected@file@percent }
+\newlabel{fig:architecture}{{1}{3}{High-level architecture of NMS showing the three-tier structure: Server, Clients, and Endpoint Agents}{figure.1.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Server Component}{3}{subsection.1.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Client Component}{4}{subsection.1.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Agent Component}{4}{subsection.1.3.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Internal architecture of the client binary showing the four integrated modules.}}{5}{figure.1.2}\protected@file@percent }
+\newlabel{fig:client}{{2}{5}{Internal architecture of the client binary showing the four integrated modules}{figure.1.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Third-Party Integration}{5}{subsection.1.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Data Flow Summary}{6}{subsection.1.3.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Data flow from endpoint agents through the client hub to the server and back to the client UI.}}{6}{figure.1.3}\protected@file@percent }
+\newlabel{fig:dataflow}{{3}{6}{Data flow from endpoint agents through the client hub to the server and back to the client UI}{figure.1.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Privacy Isolation Model}{6}{subsection.1.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.7}Deployment Architecture}{6}{subsection.1.3.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Deployment architecture for NMS components.}}{7}{table.1.1}\protected@file@percent }
+\newlabel{tab:deployment}{{1}{7}{Deployment architecture for NMS components}{table.1.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Communication Protocol}{7}{section.1.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Message Types}{7}{subsection.1.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Protocol State Machine}{7}{subsection.1.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Port Assignments}{7}{subsection.1.4.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces State machine for client--server connection lifecycle.}}{8}{figure.1.4}\protected@file@percent }
+\newlabel{fig:statemachine}{{4}{8}{State machine for client--server connection lifecycle}{figure.1.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Network port assignments.}}{8}{table.1.2}\protected@file@percent }
+\newlabel{tab:ports}{{2}{8}{Network port assignments}{table.1.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Real World Use Cases}{8}{section.1.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Successful Scenarios}{8}{subsection.1.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Scenario 1: Brute-Force SSH Detection}{8}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Scenario 2: Third-Party Router Integration}{9}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Scenario 3: File Integrity Monitoring}{9}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Failure Scenarios}{9}{subsection.1.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Scenario 4: Network Disconnection Handling}{9}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Scenario 5: Malformed Message Rejection}{10}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{Scenario 6: Server Overload Protection}{10}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{10}{section.1.6}\protected@file@percent }
+\bibcite{rfc5424}{1}
+\bibcite{tcpip}{2}
+\bibcite{stallings}{3}
+\bibcite{docker}{4}
+\bibcite{sqlite}{5}
+\bibcite{openssl}{6}
+\bibcite{qt}{7}
+\bibcite{wazuh}{8}
+\bibcite{elastic}{9}
+\bibcite{siem}{10}
+\bibcite{xgboost}{11}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Potential Improvements}{11}{subsection.1.6.1}\protected@file@percent }
+\gdef \@abspage@last{12}
