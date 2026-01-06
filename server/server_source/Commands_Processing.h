@@ -10,6 +10,11 @@ enum TipComanda {
   REGISTER,
   HEARTBEAT,
   BATCH_EVENT,
+  QUERY_EVENTS,  // NEW: Query last N events
+  CREATE_USER,   // NEW: Create a new user (admin only)
+  PROMOTE_USER,  // NEW: Promote user to admin (admin only)
+  QUERY_METRICS, // NEW: Query metrics for dashbaord
+  QUERY_ALERTS,  // NEW: Query ML alerts
   RESULTS,
   COMMAND,
   ACK,
@@ -31,6 +36,31 @@ public:
                                     ManagerBazaDate *bd);
   static string ProceseazaBATCH_EVENT(const string &argumente,
                                       int socket_client, ManagerBazaDate *bd);
+
+  // NEW: Query events with modular parameters
+  // Format: QUERY_EVENTS <username> <limit> [event_type=X] [since=timestamp]
+  static string ProceseazaQUERY_EVENTS(const string &argumente,
+                                       int socket_client, ManagerBazaDate *bd);
+
+  // NEW: Create a new user (admin only)
+  // Format: CREATE_USER <admin_username> <new_username> <new_password> [role]
+  static string ProceseazaCREATE_USER(const string &argumente,
+                                      int socket_client, ManagerBazaDate *bd);
+
+  // NEW: Promote a user to admin (admin only)
+  // Format: PROMOTE_USER <admin_username> <target_username>
+  static string ProceseazaPROMOTE_USER(const string &argumente,
+                                       int socket_client, ManagerBazaDate *bd);
+
+  // NEW: Query metrics
+  // Format: QUERY_METRICS <username> <metric_type>
+  static string ProceseazaQUERY_METRICS(const string &argumente,
+                                        int socket_client, ManagerBazaDate *bd);
+
+  // NEW: Query alerts
+  // Format: QUERY_ALERTS <username> <limit> [state]
+  static string ProceseazaQUERY_ALERTS(const string &argumente,
+                                       int socket_client, ManagerBazaDate *bd);
 
   // Genereaza raspunsuri text
   static string GenereazaACK(const string &stare, const string &mesaj);

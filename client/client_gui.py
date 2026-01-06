@@ -67,44 +67,79 @@ class NetworkClient:
         self.connected = False
 
 
-class LogMonitorThread(QThread):
-    """Thread pentru monitorizarea fisierului de log"""
-    log_signal = pyqtSignal(str)
-    
-    def __init__(self, client: NetworkClient, log_path: str = "/var/log/syslog"):
-        super().__init__()
-        self.client = client
-        self.log_path = log_path
-        self.running = True
-    
-    def run(self):
-        if not os.access(self.log_path, os.R_OK):
-            self.log_signal.emit(f"[WARN] Nu pot citi {self.log_path}")
-            return
-        
-        self.log_signal.emit(f"[INFO] Monitorizare: {self.log_path}")
-        
-        try:
-            with open(self.log_path, 'r') as f:
-                f.seek(0, 2)
-                while self.running and self.client.connected:
-                    line = f.readline()
-                    if line:
-                        clean = line.strip()
-                        if clean:
-                            # Trimitem la server
-                            self.client.send(f"BATCH_EVENT {clean}")
-                            # Afisam si in UI (trimitem doar ultimele 80 caractere pentru lizibilitate)
-                            display_text = clean[:80] + "..." if len(clean) > 80 else clean
-                            self.log_signal.emit(f"📡 {display_text}")
-                    else:
-                        time.sleep(0.5)
-        except Exception as e:
-            self.log_signal.emit(f"[ERROR] {e}")
-    
-    def stop(self):
-        self.running = False
 
+
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QGridLayout
+import matplotlib
+matplotlib.use('QtAgg') 
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import numpy as np
+
+# Dashboard Widget Class
+class DashboardPanel(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QGridLayout()
+        self.setLayout(layout)
+        
+        # 1. Events Over Time (Line Chart)
+        self.fig_line = Figure(figsize=(5, 3), dpi=100)
+        self.canvas_line = FigureCanvas(self.fig_line)
+        self.ax_line = self.fig_line.add_subplot(111)
+        self.ax_line.set_title("Events per Hour (Last 24h)")
+        layout.addWidget(self.canvas_line, 0, 0, 1, 2) # Span top row
+        
+        # 2. Severity Dist (Pie Chart)
+        self.fig_pie = Figure(figsize=(4, 3), dpi=100)
+        self.canvas_pie = FigureCanvas(self.fig_pie)
+        self.ax_pie = self.fig_pie.add_subplot(111)
+        self.ax_pie.set_title("Severity Distribution")
+        layout.addWidget(self.canvas_pie, 1, 0)
+        
+        # 3. Top Sources (Bar Chart)
+        self.fig_bar = Figure(figsize=(4, 3), dpi=100)
+        self.canvas_bar = FigureCanvas(self.fig_bar)
+        self.ax_bar = self.fig_bar.add_subplot(111)
+        self.ax_bar.set_title("Top Log Sources")
+        layout.addWidget(self.canvas_bar, 1, 1)
+        
+    def update_charts(self, time_data, sev_data, src_data):
+        # 1. Line Chart
+        self.ax_line.clear()
+        self.ax_line.set_title("Events per Hour (Last 24h)")
+        if time_data:
+            hours = [x[0][11:13] for x in time_data] # Extract HH from "YYYY-MM-DD HH:00:00"
+            counts = [int(x[1]) for x in time_data]
+            # Reverse to show chronological order (query returns DESC)
+            hours.reverse()
+            counts.reverse()
+            self.ax_line.plot(hours, counts, marker='o', linestyle='-', color='b')
+            self.ax_line.grid(True)
+        self.canvas_line.draw()
+        
+        # 2. Pie Chart
+        self.ax_pie.clear()
+        self.ax_pie.set_title("Severity Distribution")
+        if sev_data:
+            labels = [f"Sev {x[0]}" for x in sev_data]
+            sizes = [int(x[1]) for x in sev_data]
+            self.ax_pie.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
+        self.canvas_pie.draw()
+        
+        # 3. Bar Chart
+        self.ax_bar.clear()
+        self.ax_bar.set_title("Top Log Sources")
+        if src_data:
+            sources = [x[0] for x in src_data]
+            counts = [int(x[1]) for x in src_data]
+            y_pos = np.arange(len(sources))
+            self.ax_bar.barh(y_pos, counts, align='center', color='g')
+            self.ax_bar.set_yticks(y_pos)
+            self.ax_bar.set_yticklabels(sources)
+            self.ax_bar.invert_yaxis()  # labels read top-to-bottom
+        self.canvas_bar.draw()
 
 class MainWindow(QMainWindow):
     """Fereastra principala - incarca UI din Designer"""
@@ -116,11 +151,30 @@ class MainWindow(QMainWindow):
         ui_path = os.path.join(os.path.dirname(__file__), "mainwindows.ui")
         uic.loadUi(ui_path, self)
         
-        self.setWindowTitle("NMS Client - PyQt6")
+        self.setWindowTitle("NMS Client - PyQt6 (Viewer + Dashboard)")
+        
+        # REFACTOR: Use Tabs
+        self.tabs = QTabWidget()
+        self.old_central = self.centralWidget()
+        if self.old_central:
+            # Note: setCentralWidget ownership transfer is tricky in PySide/PyQt
+            # But reparenting usually works.
+            self.old_central.setParent(self.tabs)
+            self.tabs.addTab(self.old_central, "Live Logging")
+        
+        self.dashboard = DashboardPanel()
+        self.tabs.addTab(self.dashboard, "Dashboard")
+        
+        self.setCentralWidget(self.tabs)
         
         # Initializare client retea
         self.client = NetworkClient()
-        self.monitor_thread = None
+        self.current_user = ""
+        
+        # Timer pentru polling
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.refresh_data)
+        self.last_event_id = 0
         
         # Conectare semnale la sloturi (butoane -> functii)
         # Widgeturile sunt accesate prin numele lor din Designer
@@ -141,7 +195,10 @@ class MainWindow(QMainWindow):
     def log(self, message: str):
         """Adauga mesaj in consola de loguri"""
         timestamp = time.strftime("%H:%M:%S")
-        self.log_console.append(f"[{timestamp}] {message}")
+        if hasattr(self, 'log_console'):
+            self.log_console.append(f"[{timestamp}] {message}")
+        else:
+            print(f"[{timestamp}] {message}")
     
     def on_connect(self):
         """Handler pentru butonul CONNECT"""
@@ -165,15 +222,15 @@ class MainWindow(QMainWindow):
                     
                     if "OK" in resp:
                         # Autentificare reusita!
+                        self.current_user = username
                         self.btn_connect.setText("DISCONNECT")
                         self.btn_register.setEnabled(True)
                         self.btn_heartbeat.setEnabled(True)
                         self.statusbar.showMessage(f"Autentificat ca {username} @ {ip}:{port}")
                         
-                        # Pornim monitorizarea logurilor
-                        self.monitor_thread = LogMonitorThread(self.client)
-                        self.monitor_thread.log_signal.connect(self.log)
-                        self.monitor_thread.start()
+                        # Pornim polling-ul (la fiecare 5 secunde)
+                        self.refresh_timer.start(5000)
+                        self.refresh_data() 
                     else:
                         # Autentificare esuata
                         QMessageBox.critical(self, "Eroare Login", "Username sau parola incorecta!")
@@ -182,19 +239,82 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Eroare", msg)
         else:
             # Deconectare
-            if self.monitor_thread:
-                self.monitor_thread.stop()
-                self.monitor_thread.wait()
+            self.refresh_timer.stop()
             self.client.disconnect()
             self.btn_connect.setText("CONNECT")
             self.btn_register.setEnabled(False)
             self.btn_heartbeat.setEnabled(False)
             self.statusbar.showMessage("Deconectat")
             self.log("[INFO] Deconectat de la server.")
-    
+            
+    def refresh_data(self):
+        """Fetch logs logic + metrics if on dashboard"""
+        if not self.client.connected: return
+        
+        # 1. Fetch Logs (always, or only if on logs tab?)
+        # Let's simple fetch logs always to keep console updated
+        self.fetch_logs()
+        
+        # 2. Fetch Metrics (only if on dashboard tab to save load)
+        if self.tabs.currentWidget() == self.dashboard:
+            self.fetch_metrics()
+
+    def fetch_logs(self):
+        """Cere ultimele evenimente de la server"""
+        cmd = f"QUERY_EVENTS {self.current_user} 10"
+        if self.client.send(cmd):
+            resp = self.client.receive()
+            if resp.startswith("RESULTS"):
+                try:
+                    parts = resp.split(';', 1)
+                    if len(parts) > 1:
+                        events_str = parts[1]
+                        events = events_str.split(';')
+                        for evt in events:
+                            if not evt: continue
+                            fields = evt.split('|')
+                            if len(fields) >= 4:
+                                evt_id = int(fields[0])
+                                # Simple log to console
+                                # Note: In real app, avoid spamming duplicates.
+                                # Here we just log to show it works.
+                                # self.log(f"EVENT #{evt_id}: {fields[3][:50]}...")
+                                pass
+                except Exception as e:
+                    print(f"Parse error: {e}")
+
+    def fetch_metrics(self):
+        """Cere metrics si updateaza dashboardul"""
+        # 1. Events over time
+        time_data = self._query_metric("events_over_time")
+        # 2. Severity
+        sev_data = self._query_metric("severity_dist")
+        # 3. Top Sources
+        src_data = self._query_metric("top_sources")
+        
+        self.dashboard.update_charts(time_data, sev_data, src_data)
+
+    def _query_metric(self, metric_type):
+        """Helper to query a specific metric"""
+        data = []
+        cmd = f"QUERY_METRICS {self.current_user} {metric_type}"
+        if self.client.send(cmd):
+            resp = self.client.receive()
+            # Format: RESULTS count=N;val1;val2;...
+            if resp.startswith("RESULTS"):
+                 try:
+                    parts = resp.split(';', 1)
+                    if len(parts) > 1:
+                        items = parts[1].split(';')
+                        for item in items:
+                            if '|' in item:
+                                data.append(item.split('|'))
+                 except: pass
+        return data
+
     def send_register(self):
         """Trimite comanda REGISTER"""
-        cmd = "REGISTER 1.0 PyQt6-Client Linux"
+        cmd = f"REGISTER {self.current_user} 1.0 PyQt6-Client Linux"
         if self.client.send(cmd):
             self.log(f"📤 {cmd}")
             resp = self.client.receive()
@@ -203,7 +323,8 @@ class MainWindow(QMainWindow):
     
     def send_heartbeat(self):
         """Trimite comanda HEARTBEAT"""
-        cmd = "HEARTBEAT 3600"
+        # Aceasta era pentru agent, dar acum clientul poate trimite heartbeat ca "alive session"
+        cmd = f"HEARTBEAT {self.current_user} 3600"
         if self.client.send(cmd):
             self.log(f"📤 {cmd}")
             resp = self.client.receive()
@@ -212,9 +333,7 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Cleanup la inchidere"""
-        if self.monitor_thread:
-            self.monitor_thread.stop()
-            self.monitor_thread.wait()
+        self.refresh_timer.stop()
         self.client.disconnect()
         event.accept()
 
@@ -228,3 +347,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

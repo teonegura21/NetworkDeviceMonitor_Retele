@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-    using namespace std;
+using namespace std;
 
 class Server {
 private:
@@ -35,7 +35,7 @@ private:
   void AdaugaThreaduri(int numar);
 
 public:
-  Server(int port, int min_threaduri, int max_threaduri);
+  Server(int port, int min_threaduri, int max_threaduri, ManagerBazaDate *db);
   ~Server();
   void Ruleaza();
 };

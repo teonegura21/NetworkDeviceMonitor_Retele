@@ -9,13 +9,14 @@
 
 using namespace std;
 
-Server::Server(int port, int min_threaduri, int max_threaduri) {
+Server::Server(int port, int min_threaduri, int max_threaduri,
+               ManagerBazaDate *db) {
   this->port = port;
   this->min_threaduri = min_threaduri;
   this->max_threaduri = max_threaduri;
 
-  // Initializam baza de date (cale relativa catre folderul SQL.lite_db)
-  this->baza_date = new ManagerBazaDate("../SQL.lite_db/nms_romania.db");
+  // Folosim baza de date partajata
+  this->baza_date = db;
 
   InitializeazaServer();
   InitializeazaPoolThreaduri();
@@ -208,6 +209,26 @@ void Server::ProcseazaClient(int socket_client) {
         break;
       case BATCH_EVENT:
         raspuns = ProcesorComenzi::ProceseazaBATCH_EVENT(
+            comanda_curata, socket_client, this->baza_date);
+        break;
+      case QUERY_EVENTS:
+        raspuns = ProcesorComenzi::ProceseazaQUERY_EVENTS(
+            comanda_curata, socket_client, this->baza_date);
+        break;
+      case CREATE_USER:
+        raspuns = ProcesorComenzi::ProceseazaCREATE_USER(
+            comanda_curata, socket_client, this->baza_date);
+        break;
+      case PROMOTE_USER:
+        raspuns = ProcesorComenzi::ProceseazaPROMOTE_USER(
+            comanda_curata, socket_client, this->baza_date);
+        break;
+      case QUERY_METRICS:
+        raspuns = ProcesorComenzi::ProceseazaQUERY_METRICS(
+            comanda_curata, socket_client, this->baza_date);
+        break;
+      case QUERY_ALERTS:
+        raspuns = ProcesorComenzi::ProceseazaQUERY_ALERTS(
             comanda_curata, socket_client, this->baza_date);
         break;
       case NECUNOSCUT:

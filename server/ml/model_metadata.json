@@ -1,0 +1,6 @@
+{
+  "n_features": 200,
+  "contamination": 0.05,
+  "n_estimators": 100,
+  "vocabulary_size": 200
+}
