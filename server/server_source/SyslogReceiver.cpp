@@ -159,16 +159,111 @@ void SyslogReceiver::ProcessMessage(const string &raw_msg,
   if (agent.has_value()) {
     admin_id = agent->admin_id;
     db->UpdateAgentHeartbeat(agent->id);
-  } else {
-    // Auto-register unknown agents to admin 1? Or just log to admin 1?
-    // Let's just log to admin 1 for now.
   }
 
-  // 3. Store in Loguri (generic event)
+  // 3. Check for specialized message types (NETWORK_FLOW, PORT_SCAN)
+  if (msg.message.find("NETWORK_FLOW:") != string::npos) {
+    // Parse: "NETWORK_FLOW: TCP 192.168.1.17:443 -> 8.8.8.8:443
+    // state=ESTABLISHED"
+    string protocol = "TCP";
+    string local_addr = "0.0.0.0";
+    int local_port = 0;
+    string remote_addr = "0.0.0.0";
+    int remote_port = 0;
+    string state = "UNKNOWN";
+
+    size_t pos = msg.message.find("NETWORK_FLOW: ");
+    if (pos != string::npos) {
+      string data = msg.message.substr(pos + 14);
+      stringstream ss(data);
+      string local_full, arrow, remote_full;
+
+      ss >> protocol >> local_full >> arrow >> remote_full;
+
+      // Parse local addr:port
+      size_t colon = local_full.rfind(':');
+      if (colon != string::npos) {
+        local_addr = local_full.substr(0, colon);
+        try {
+          local_port = stoi(local_full.substr(colon + 1));
+        } catch (...) {
+        }
+      }
+
+      // Parse remote addr:port
+      colon = remote_full.rfind(':');
+      if (colon != string::npos) {
+        remote_addr = remote_full.substr(0, colon);
+        try {
+          remote_port = stoi(remote_full.substr(colon + 1));
+        } catch (...) {
+        }
+      }
+
+      // Parse state=XXX
+      size_t state_pos = msg.message.find("state=");
+      if (state_pos != string::npos) {
+        state = msg.message.substr(state_pos + 6);
+        size_t end = state.find_first_of(" \n\r");
+        if (end != string::npos)
+          state = state.substr(0, end);
+      }
+    }
+
+    // Store in NetworkFlows table
+    db->StoreNetworkFlow(admin_id, msg.hostname, protocol, local_addr,
+                         local_port, remote_addr, remote_port, state, "");
+    return; // Don't also store in Loguri
+  }
+
+  if (msg.message.find("PORT_SCAN_DETECTED:") != string::npos) {
+    // Parse port scan alert and create alert
+    // Format: "PORT_SCAN_DETECTED: type=TCP_SYN src=10.0.0.99 ports=11
+    // severity=HIGH"
+    string scan_type = "TCP_CONNECT";
+    string source_ip = "unknown";
+    int ports = 0;
+    int severity = 3; // Default medium
+
+    // Simple parsing - find key=value pairs
+    size_t pos;
+    if ((pos = msg.message.find("type=")) != string::npos) {
+      size_t end = msg.message.find(' ', pos);
+      scan_type = msg.message.substr(pos + 5, end - pos - 5);
+    }
+    if ((pos = msg.message.find("src=")) != string::npos) {
+      size_t end = msg.message.find(' ', pos);
+      source_ip = msg.message.substr(pos + 4, end - pos - 4);
+    }
+    if ((pos = msg.message.find("ports=")) != string::npos) {
+      size_t end = msg.message.find(' ', pos);
+      string ports_str = msg.message.substr(pos + 6, end - pos - 6);
+      try {
+        ports = stoi(ports_str);
+      } catch (...) {
+      }
+    }
+    if (msg.message.find("severity=HIGH") != string::npos)
+      severity = 1;
+    else if (msg.message.find("severity=MEDIUM") != string::npos)
+      severity = 3;
+    else if (msg.message.find("severity=LOW") != string::npos)
+      severity = 5;
+
+    // Create port scan alert
+    db->CreatePortScanAlert(admin_id, source_ip, scan_type, "", ports, 0,
+                            severity);
+
+    cout << "🚨 PORT SCAN ALERT: " << source_ip << " (" << scan_type << ", "
+         << ports << " ports)" << endl;
+    return;
+  }
+
+  // 4. Store regular messages in Loguri (generic event)
   int event_id = db->SalveazaLogExtins(admin_id, msg.app_name, msg.message,
                                        src_ip, "syslog");
 
-  // 4. Store extra details in syslog_rfc5424
+  // 5. Store extra details in syslog_rfc5424
   RFC5424Data data;
   data.facility = msg.facility;
   data.severity = msg.severity;

@@ -7,10 +7,6 @@
 
 using namespace std;
 
-// ============================================================================
-// Data structures for OOP approach
-// ============================================================================
-
 /**
  * Represents a user in the system (admin or regular user)
  */
@@ -76,6 +72,36 @@ struct Alert {
   string created_at;
   string message; // Cached from event for convenience
   string src_ip;  // Cached from event
+};
+
+/**
+ * Represents a network flow (TCP/UDP connection) from agent
+ */
+struct NetworkFlow {
+  int id;
+  string timestamp;
+  int admin_id;
+  string source_host; // Agent hostname
+  string protocol;    // "TCP" or "UDP"
+  string local_addr;
+  int local_port;
+  string remote_addr;
+  int remote_port;
+  string state; // "ESTABLISHED", "LISTEN", etc.
+  string process_name;
+};
+
+/**
+ * Represents port scan detection details
+ */
+struct PortScanDetail {
+  int id;
+  int alert_id;
+  string source_ip;
+  string scan_type;     // "TCP_CONNECT", "TCP_SYN", "UDP"
+  string ports_scanned; // Comma-separated ports
+  int port_count;
+  int duration_seconds;
 };
 
 /**
@@ -268,6 +294,68 @@ public:
    * Get agent by hostname and src_ip
    */
   optional<Agent> GetAgentByHost(const string &hostname, const string &src_ip);
+
+  // ========================================================================
+  // Network Flow Monitoring (NEW!)
+  // ========================================================================
+
+  /**
+   * Store a network flow (TCP/UDP connection) reported by agent
+   * @param admin_id The admin who owns this agent
+   * @param source_host Hostname of the reporting agent
+   * @param protocol "TCP" or "UDP"
+   * @param local_addr Local IP address
+   * @param local_port Local port number
+   * @param remote_addr Remote IP address
+   * @param remote_port Remote port number
+   * @param state Connection state (ESTABLISHED, LISTEN, etc.)
+   * @param process_name Process name if known
+   * @return Inserted row ID or -1 on failure
+   */
+  int StoreNetworkFlow(int admin_id, const string &source_host,
+                       const string &protocol, const string &local_addr,
+                       int local_port, const string &remote_addr,
+                       int remote_port, const string &state,
+                       const string &process_name = "");
+
+  /**
+   * Create a port scan alert with details
+   * @param admin_id Admin ID
+   * @param source_ip IP that performed the scan
+   * @param scan_type Type of scan (TCP_CONNECT, TCP_SYN, UDP)
+   * @param ports_scanned Comma-separated list of scanned ports
+   * @param port_count Number of ports scanned
+   * @param duration_seconds Duration of the scan
+   * @param severity Alert severity (1=high, 5=low)
+   * @return Alert ID or -1 on failure
+   */
+  int CreatePortScanAlert(int admin_id, const string &source_ip,
+                          const string &scan_type, const string &ports_scanned,
+                          int port_count, int duration_seconds, int severity);
+
+  /**
+   * Get recent network flows for dashboard
+   * @param admin_id Admin whose flows to retrieve
+   * @param limit Maximum flows to return
+   * @param protocol_filter Optional: filter by protocol ("TCP" or "UDP")
+   * @return Vector of NetworkFlow structs
+   */
+  vector<NetworkFlow> GetRecentFlows(int admin_id, int limit,
+                                     const string &protocol_filter = "");
+
+  /**
+   * Get network flow statistics (protocol distribution, top remotes)
+   * @param admin_id Admin ID
+   * @param minutes Time window in minutes
+   */
+  struct FlowStats {
+    int tcp_count;
+    int udp_count;
+    int established_count;
+    int listen_count;
+    vector<pair<string, int>> top_remotes; // IP -> count
+  };
+  FlowStats GetFlowStatistics(int admin_id, int minutes = 5);
 
 private:
 };

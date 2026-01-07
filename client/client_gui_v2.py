@@ -220,14 +220,14 @@ class NetworkClient:
     def __init__(self):
         self.sock = None
         self.connected = False
-        self.buffer_size = 4096
+        self.buffer_size = 65536  # Increased from 4096 to handle large responses
 
     def connect(self, ip: str, port: int) -> tuple[bool, str]:
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.settimeout(3)
             self.sock.connect((ip, port))
-            self.sock.settimeout(None)
+            self.sock.settimeout(5)  # Keep timeout for receive
             self.connected = True
             welcome = self.sock.recv(self.buffer_size).decode('utf-8', errors='ignore')
             return True, f"Connected! {welcome.strip()}"
@@ -249,9 +249,32 @@ class NetworkClient:
         if not self.connected:
             return ""
         try:
-            data = self.sock.recv(self.buffer_size)
-            return data.decode('utf-8', errors='ignore').strip() if data else ""
-        except:
+            # Receive data in a loop until we have complete response
+            chunks = []
+            total_received = 0
+            max_size = 128 * 1024  # 128KB max
+            
+            self.sock.settimeout(2)  # Short timeout for subsequent chunks
+            
+            while total_received < max_size:
+                try:
+                    data = self.sock.recv(self.buffer_size)
+                    if not data:
+                        break
+                    chunks.append(data)
+                    total_received += len(data)
+                    
+                    # If we received less than buffer, likely end of message
+                    if len(data) < self.buffer_size:
+                        break
+                except socket.timeout:
+                    break  # No more data coming
+                except:
+                    break
+            
+            result = b''.join(chunks).decode('utf-8', errors='ignore').strip()
+            return result
+        except Exception as e:
             return ""
 
     def disconnect(self):
@@ -261,6 +284,7 @@ class NetworkClient:
             except:
                 pass
         self.connected = False
+
 
 
 # ==============================================================================
@@ -497,6 +521,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._create_events_tab(), "📋 Events")
         self.tabs.addTab(self._create_dashboard_tab(), "📊 Dashboard")
         self.tabs.addTab(self._create_alerts_tab(), "🚨 Alerts")
+        self.tabs.addTab(self._create_network_tab(), "🌐 Network")
         self.tabs.addTab(self._create_console_tab(), "💻 Console")
         
         # Admin-only tab
@@ -762,14 +787,17 @@ class MainWindow(QMainWindow):
     
     def _fetch_alerts(self):
         """Fetch alerts from server"""
-        if not self.client or not self.current_user:
-            return
-        
-        cmd = f"QUERY_ALERTS {self.current_user} 100"
-        if self.client.send(cmd):
-            response = self.client.receive()
-            if response and "ACK RESULTS" in response:
-                self._populate_alerts_table(response)
+        try:
+            if not self.client or not self.current_user:
+                return
+            
+            cmd = f"QUERY_ALERTS {self.current_user} 100"
+            if self.client.send(cmd):
+                response = self.client.receive()
+                if response and "RESULTS" in response:
+                    self._populate_alerts_table(response)
+        except Exception as e:
+            print(f"Error fetching alerts: {e}")
     
     def _populate_alerts_table(self, response: str):
         """Parse and display alerts"""
@@ -857,6 +885,225 @@ class MainWindow(QMainWindow):
         # For now just refresh - TODO: add state parameter to query
         self._fetch_alerts()
     
+    def _create_network_tab(self) -> QWidget:
+        """Create Network Flow monitoring tab"""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        widget.setLayout(layout)
+        
+        # Header
+        header = QLabel("🌐 Network Flow Monitor")
+        header.setStyleSheet("font-size: 18pt; font-weight: bold; color: #3498db;")
+        layout.addWidget(header)
+        
+        # Stats cards row
+        stats_row = QHBoxLayout()
+        
+        # TCP Count Card
+        self.tcp_stat_card = self._create_stat_card("TCP", "0")
+        stats_row.addWidget(self.tcp_stat_card)
+        
+        # UDP Count Card
+        self.udp_stat_card = self._create_stat_card("UDP", "0")
+        stats_row.addWidget(self.udp_stat_card)
+        
+        # Established Card
+        self.estab_stat_card = self._create_stat_card("Established", "0")
+        stats_row.addWidget(self.estab_stat_card)
+        
+        # Listening Card
+        self.listen_stat_card = self._create_stat_card("Listening", "0")
+        stats_row.addWidget(self.listen_stat_card)
+        
+        layout.addLayout(stats_row)
+        
+        # Toolbar
+        toolbar = QHBoxLayout()
+        
+        self.network_protocol_filter = QComboBox()
+        self.network_protocol_filter.addItems(["All", "TCP", "UDP"])
+        self.network_protocol_filter.currentTextChanged.connect(self._on_network_filter_changed)
+        toolbar.addWidget(QLabel("Protocol:"))
+        toolbar.addWidget(self.network_protocol_filter)
+        
+        refresh_btn = QPushButton("↻ Refresh")
+        refresh_btn.clicked.connect(self._fetch_network_flows)
+        toolbar.addWidget(refresh_btn)
+        
+        toolbar.addStretch()
+        self.network_stats_label = QLabel("0 flows")
+        self.network_stats_label.setStyleSheet("font-weight: bold; color: #3498db;")
+        toolbar.addWidget(self.network_stats_label)
+        
+        layout.addLayout(toolbar)
+        
+        # Network flows table
+        self.network_table = QTableWidget()
+        self.network_table.setColumnCount(8)
+        self.network_table.setHorizontalHeaderLabels([
+            "Time", "Host", "Protocol", "Local Address", "Port", 
+            "Remote Address", "Port", "State"
+        ])
+        
+        # Style
+        self.network_table.setAlternatingRowColors(True)
+        self.network_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.network_table.verticalHeader().setVisible(False)
+        self.network_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #2c3e50;
+                color: #ecf0f1;
+                gridline-color: #34495e;
+                border: none;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #3498db;
+            }
+            QHeaderView::section {
+                background-color: #34495e;
+                color: #ecf0f1;
+                padding: 5px;
+                border: none;
+                font-weight: bold;
+            }
+        """)
+        
+        # Column widths
+        header = self.network_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Time
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Host
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Protocol
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Local Address
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Local Port
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Remote Address
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Remote Port
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # State
+        
+        layout.addWidget(self.network_table)
+        
+        # Top remote IPs section
+        top_ips_label = QLabel("🔝 Top Remote Connections")
+        top_ips_label.setStyleSheet("font-size: 12pt; font-weight: bold; margin-top: 10px;")
+        layout.addWidget(top_ips_label)
+        
+        self.top_remotes_text = QLabel("Waiting for data...")
+        self.top_remotes_text.setStyleSheet("color: #95a5a6; padding: 10px; background-color: #34495e; border-radius: 5px;")
+        layout.addWidget(self.top_remotes_text)
+        
+        return widget
+    
+    def _fetch_network_flows(self):
+        """Fetch network flows from server"""
+        if not self.client or not self.current_user:
+            return
+        
+        protocol = self.network_protocol_filter.currentText()
+        if protocol == "All":
+            protocol = ""
+        
+        cmd = f"QUERY_NETWORK_FLOWS {self.current_user} 100 {protocol}"
+        if self.client.send(cmd):
+            response = self.client.receive()
+            if response:
+                self._populate_network_table(response)
+    
+    def _populate_network_table(self, response: str):
+        """Parse and display network flow data"""
+        try:
+            lines = response.strip().split('\n')
+            if not lines or lines[0].startswith('ERR'):
+                return
+            
+            self.network_table.setRowCount(0)
+            
+            tcp_count = 0
+            udp_count = 0
+            estab_count = 0
+            listen_count = 0
+            remote_ip_counts = {}  # Track remote IP frequencies
+            
+            for line in lines:
+                if not line.strip() or line.startswith('OK'):
+                    continue
+                
+                # Format: timestamp|source_host|protocol|local_addr|local_port|remote_addr|remote_port|state
+                parts = line.split('|')
+                if len(parts) >= 8:
+                    row = self.network_table.rowCount()
+                    self.network_table.insertRow(row)
+                    
+                    # Track remote IP (column 5)
+                    remote_ip = parts[5].strip()
+                    if remote_ip and remote_ip != "0.0.0.0":
+                        remote_ip_counts[remote_ip] = remote_ip_counts.get(remote_ip, 0) + 1
+                    
+                    for col, val in enumerate(parts[:8]):
+                        item = QTableWidgetItem(val.strip())
+                        
+                        # Color code by state
+                        if col == 7:  # State column
+                            state = val.strip()
+                            if state == "ESTABLISHED":
+                                item.setForeground(QColor("#2ecc71"))  # Green
+                                estab_count += 1
+                            elif state == "LISTEN":
+                                item.setForeground(QColor("#3498db"))  # Blue
+                                listen_count += 1
+                            elif state in ["SYN_SENT", "SYN_RECV"]:
+                                item.setForeground(QColor("#f39c12"))  # Orange
+                            elif state in ["TIME_WAIT", "CLOSE_WAIT"]:
+                                item.setForeground(QColor("#e74c3c"))  # Red
+                        
+                        # Color code by protocol
+                        if col == 2:  # Protocol column
+                            proto = val.strip()
+                            if proto == "TCP":
+                                item.setForeground(QColor("#9b59b6"))  # Purple
+                                tcp_count += 1
+                            elif proto == "UDP":
+                                item.setForeground(QColor("#e67e22"))  # Orange
+                                udp_count += 1
+                        
+                        self.network_table.setItem(row, col, item)
+            
+            # Update stats
+            total = self.network_table.rowCount()
+            self.network_stats_label.setText(f"{total} flows")
+            
+            # Update stat cards
+            self._update_stat_card(self.tcp_stat_card, str(tcp_count))
+            self._update_stat_card(self.udp_stat_card, str(udp_count))
+            self._update_stat_card(self.estab_stat_card, str(estab_count))
+            self._update_stat_card(self.listen_stat_card, str(listen_count))
+            
+            # Update top remote connections
+            if remote_ip_counts:
+                sorted_ips = sorted(remote_ip_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+                top_text = " | ".join([f"{ip}: {count}" for ip, count in sorted_ips])
+                self.top_remotes_text.setText(f"📊 {top_text}")
+            else:
+                self.top_remotes_text.setText("No external connections detected")
+            
+        except Exception as e:
+            print(f"Error populating network table: {e}")
+    
+    def _update_stat_card(self, card_widget, value: str):
+        """Update the value in a stat card"""
+        # Find the value label and update it
+        for child in card_widget.findChildren(QLabel):
+            if child.font().pointSize() >= 20:
+                child.setText(value)
+                break
+    
+    def _on_network_filter_changed(self, protocol: str):
+        """Handle protocol filter change"""
+        self._fetch_network_flows()
+
+    
     def _create_console_tab(self) -> QWidget:
         """Interactive console - can send commands to server"""
         widget = QWidget()
@@ -942,6 +1189,8 @@ class MainWindow(QMainWindow):
             self._fetch_metrics()
         elif current_tab == 2:  # Alerts tab
             self._fetch_alerts()
+        elif current_tab == 3:  # Network tab
+            self._fetch_network_flows()
     
     def refresh_data(self):
         """Periodic data refresh - now handled by _on_timer based on active tab"""
@@ -1068,84 +1317,124 @@ class MainWindow(QMainWindow):
     
     def _fetch_metrics(self):
         """Fetch dashboard metrics"""
-        # 1. Events over time
-        time_data = self._query_metric("events_over_time")
-        # 2. Severity
-        sev_data = self._query_metric("severity_dist")
-        # 3. Top sources
-        src_data = self._query_metric("top_sources")
-        
-        self._update_dashboard(time_data, sev_data, src_data)
+        try:
+            # 1. Events over time
+            time_data = self._query_metric("events_over_time")
+            # 2. Severity
+            sev_data = self._query_metric("severity_dist")
+            # 3. Top sources
+            src_data = self._query_metric("top_sources")
+            
+            self._update_dashboard(time_data, sev_data, src_data)
+        except Exception as e:
+            print(f"Error fetching metrics: {e}")
     
     def _query_metric(self, metric_type):
         """Helper to query metrics"""
         data = []
-        cmd = f"QUERY_METRICS {self.current_user} {metric_type}"
-        if self.client.send(cmd):
-            resp = self.client.receive()
-            if resp.startswith("RESULTS"):
-                try:
+        try:
+            cmd = f"QUERY_METRICS {self.current_user} {metric_type}"
+            if self.client.send(cmd):
+                resp = self.client.receive()
+                if resp and "RESULTS" in resp:  # Changed from startswith to 'in'
+                    # Find the part after "RESULTS "
+                    idx = resp.find("RESULTS ")
+                    if idx != -1:
+                        resp = resp[idx + 8:]  # Skip "RESULTS "
                     parts = resp.split(';', 1)
                     if len(parts) > 1:
                         items = parts[1].split(';')
                         for item in items:
                             if '|' in item:
                                 data.append(item.split('|'))
-                except: pass
+        except Exception as e:
+            pass
         return data
     
     def _update_dashboard(self, time_data, sev_data, src_data):
         """Update dashboard charts"""
-        # Update stat cards
-        total = sum(int(x[1]) for x in time_data) if time_data else 0
-        critical = sum(int(x[1]) for x in sev_data if int(x[0]) <= 2) if sev_data else 0
-        sources = len(src_data)
-        
-        if hasattr(self, 'total_events_card'):
-            self.total_events_card.findChild(QLabel, "value").setText(str(total))
-            self.severity_high_card.findChild(QLabel, "value").setText(str(critical))
-            self.sources_card.findChild(QLabel, "value").setText(str(sources))
-        
-        # Line chart
-        self.ax_line.clear()
-        self.ax_line.set_facecolor('#2d2d2d')
-        self.ax_line.set_title("Events per Hour (Last 24h)", color='#e0e0e0')
-        if time_data:
-            hours = [x[0][11:13] for x in time_data]
-            counts = [int(x[1]) for x in time_data]
-            hours.reverse()
-            counts.reverse()
-            self.ax_line.plot(hours, counts, marker='o', color='#0078d4', linewidth=2)
-            self.ax_line.grid(True, alpha=0.3)
-        self.ax_line.tick_params(colors='#e0e0e0')
-        self.canvas_line.draw()
-        
-        # Pie chart
-        self.ax_pie.clear()
-        self.ax_pie.set_facecolor('#2d2d2d')
-        self.ax_pie.set_title("Severity Distribution", color='#e0e0e0')
-        if sev_data:
-            labels = [f"Sev {x[0]}" for x in sev_data]
-            sizes = [int(x[1]) for x in sev_data]
-            colors = ['#ff1744', '#ff5722', '#ff9800', '#ff6b6b', '#ffeb3b', '#4caf50', '#2196f3', '#9e9e9e']
-            self.ax_pie.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors[:len(sizes)], textprops={'color': '#e0e0e0'})
-        self.canvas_pie.draw()
-        
-        # Bar chart
-        self.ax_bar.clear()
-        self.ax_bar.set_facecolor('#2d2d2d')
-        self.ax_bar.set_title("Top Log Sources", color='#e0e0e0')
-        if src_data:
-            import numpy as np
-            sources = [x[0][:15] for x in src_data]
-            counts = [int(x[1]) for x in src_data]
-            y_pos = np.arange(len(sources))
-            self.ax_bar.barh(y_pos, counts, color='#4caf50')
-            self.ax_bar.set_yticks(y_pos)
-            self.ax_bar.set_yticklabels(sources)
-            self.ax_bar.invert_yaxis()
-        self.ax_bar.tick_params(colors='#e0e0e0')
-        self.canvas_bar.draw()
+        try:
+            # Validate and filter data - ensure each item has 2 elements with valid numbers
+            valid_time_data = []
+            for x in time_data:
+                if len(x) >= 2:
+                    try:
+                        int(x[1])
+                        valid_time_data.append(x)
+                    except ValueError:
+                        pass
+            
+            valid_sev_data = []
+            for x in sev_data:
+                if len(x) >= 2:
+                    try:
+                        int(x[0])
+                        int(x[1])
+                        valid_sev_data.append(x)
+                    except ValueError:
+                        pass
+            
+            valid_src_data = []
+            for x in src_data:
+                if len(x) >= 2:
+                    try:
+                        int(x[1])
+                        valid_src_data.append(x)
+                    except ValueError:
+                        pass
+            
+            # Update stat cards
+            total = sum(int(x[1]) for x in valid_time_data) if valid_time_data else 0
+            critical = sum(int(x[1]) for x in valid_sev_data if int(x[0]) <= 2) if valid_sev_data else 0
+            sources = len(valid_src_data)
+            
+            if hasattr(self, 'total_events_card'):
+                self.total_events_card.findChild(QLabel, "value").setText(str(total))
+                self.severity_high_card.findChild(QLabel, "value").setText(str(critical))
+                self.sources_card.findChild(QLabel, "value").setText(str(sources))
+            
+            # Line chart
+            self.ax_line.clear()
+            self.ax_line.set_facecolor('#2d2d2d')
+            self.ax_line.set_title("Events per Hour (Last 24h)", color='#e0e0e0')
+            if valid_time_data:
+                hours = [x[0][11:13] if len(x[0]) > 13 else x[0] for x in valid_time_data]
+                counts = [int(x[1]) for x in valid_time_data]
+                hours.reverse()
+                counts.reverse()
+                self.ax_line.plot(hours, counts, marker='o', color='#0078d4', linewidth=2)
+                self.ax_line.grid(True, alpha=0.3)
+            self.ax_line.tick_params(colors='#e0e0e0')
+            self.canvas_line.draw()
+            
+            # Pie chart
+            self.ax_pie.clear()
+            self.ax_pie.set_facecolor('#2d2d2d')
+            self.ax_pie.set_title("Severity Distribution", color='#e0e0e0')
+            if valid_sev_data:
+                labels = [f"Sev {x[0]}" for x in valid_sev_data]
+                sizes = [int(x[1]) for x in valid_sev_data]
+                colors = ['#ff1744', '#ff5722', '#ff9800', '#ff6b6b', '#ffeb3b', '#4caf50', '#2196f3', '#9e9e9e']
+                self.ax_pie.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors[:len(sizes)], textprops={'color': '#e0e0e0'})
+            self.canvas_pie.draw()
+            
+            # Bar chart
+            self.ax_bar.clear()
+            self.ax_bar.set_facecolor('#2d2d2d')
+            self.ax_bar.set_title("Top Log Sources", color='#e0e0e0')
+            if valid_src_data:
+                import numpy as np
+                sources = [x[0][:15] for x in valid_src_data]
+                counts = [int(x[1]) for x in valid_src_data]
+                y_pos = np.arange(len(sources))
+                self.ax_bar.barh(y_pos, counts, color='#4caf50')
+                self.ax_bar.set_yticks(y_pos)
+                self.ax_bar.set_yticklabels(sources)
+                self.ax_bar.invert_yaxis()
+            self.ax_bar.tick_params(colors='#e0e0e0')
+            self.canvas_bar.draw()
+        except Exception as e:
+            print(f"Dashboard update error: {e}")
     
     def disconnect_and_exit(self):
         """Clean disconnect and close"""

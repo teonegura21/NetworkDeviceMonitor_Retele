@@ -187,9 +187,6 @@ void Server::ProcseazaClient(int socket_client) {
         continue;
       }
 
-      cout << "📨 Primit de la " << socket_client << ": " << comanda_curata
-           << endl;
-
       // Procesare comanda (stilul vechi adaptat la input curat)
       TipComanda tip = ProcesorComenzi::RecunoasteTipComanda(comanda_curata);
       string raspuns;
@@ -231,6 +228,10 @@ void Server::ProcseazaClient(int socket_client) {
         raspuns = ProcesorComenzi::ProceseazaQUERY_ALERTS(
             comanda_curata, socket_client, this->baza_date);
         break;
+      case QUERY_NETWORK_FLOWS:
+        raspuns = ProcesorComenzi::ProceseazaQUERY_NETWORK_FLOWS(
+            comanda_curata, socket_client, this->baza_date);
+        break;
       case NECUNOSCUT:
       default:
         // Incercam sa vedem daca e formatul "comanda : argument" specific
@@ -249,8 +250,8 @@ void Server::ProcseazaClient(int socket_client) {
           conectat = false;
           break;
         }
-        cout << "📤 Trimis raspuns catre " << socket_client << " ("
-             << bytes_trimise << " bytes)" << endl;
+        // Removed verbose per-message logging - command handlers log important
+        // info
       }
     }
   }

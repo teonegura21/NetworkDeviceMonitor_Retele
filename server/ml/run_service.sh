@@ -13,5 +13,8 @@ if [ ! -f "log_anomaly_detector.onnx" ]; then
     exit 1
 fi
 
+# Activate virtual environment
+source ml_venv/bin/activate
+
 # Run service
-ml_venv/bin/python3 ml_service.py
+python3 ml_service.py

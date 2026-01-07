@@ -843,3 +843,271 @@ vector<Alert> ManagerBazaDate::GetRecentAlerts(int admin_id, int limit,
   sqlite3_finalize(stmt);
   return results;
 }
+
+// ============================================================================
+// Network Flow Monitoring (NEW!)
+// ============================================================================
+
+int ManagerBazaDate::StoreNetworkFlow(int admin_id, const string &source_host,
+                                      const string &protocol,
+                                      const string &local_addr, int local_port,
+                                      const string &remote_addr,
+                                      int remote_port, const string &state,
+                                      const string &process_name) {
+  if (!db)
+    return -1;
+
+  const char *sql = "INSERT INTO NetworkFlows "
+                    "(admin_id, source_host, protocol, local_addr, local_port, "
+                    "remote_addr, remote_port, state, process_name) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+  sqlite3_stmt *stmt;
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    cerr << "❌ StoreNetworkFlow prepare error: " << sqlite3_errmsg(db) << endl;
+    return -1;
+  }
+
+  sqlite3_bind_int(stmt, 1, admin_id);
+  sqlite3_bind_text(stmt, 2, source_host.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, protocol.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 4, local_addr.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 5, local_port);
+  sqlite3_bind_text(stmt, 6, remote_addr.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 7, remote_port);
+  sqlite3_bind_text(stmt, 8, state.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 9, process_name.c_str(), -1, SQLITE_TRANSIENT);
+
+  int result = -1;
+  if (sqlite3_step(stmt) == SQLITE_DONE) {
+    result = static_cast<int>(sqlite3_last_insert_rowid(db));
+  } else {
+    cerr << "❌ StoreNetworkFlow execute error: " << sqlite3_errmsg(db) << endl;
+  }
+
+  sqlite3_finalize(stmt);
+  return result;
+}
+
+int ManagerBazaDate::CreatePortScanAlert(int admin_id, const string &source_ip,
+                                         const string &scan_type,
+                                         const string &ports_scanned,
+                                         int port_count, int duration_seconds,
+                                         int severity) {
+  if (!db)
+    return -1;
+
+  // First create generic log entry
+  string message = "PORT_SCAN_DETECTED: type=" + scan_type +
+                   " src=" + source_ip + " ports=" + to_string(port_count);
+
+  const char *insert_log =
+      "INSERT INTO Loguri (mesaj, src_ip, admin_id, event_type) "
+      "VALUES (?, ?, ?, 'port_scan')";
+
+  sqlite3_stmt *stmt;
+  if (sqlite3_prepare_v2(db, insert_log, -1, &stmt, nullptr) != SQLITE_OK) {
+    return -1;
+  }
+
+  sqlite3_bind_text(stmt, 1, message.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 2, source_ip.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 3, admin_id);
+
+  if (sqlite3_step(stmt) != SQLITE_DONE) {
+    sqlite3_finalize(stmt);
+    return -1;
+  }
+
+  int event_id = static_cast<int>(sqlite3_last_insert_rowid(db));
+  sqlite3_finalize(stmt);
+
+  // Now create alert
+  const char *insert_alert =
+      "INSERT INTO Alerts (event_id, rule_id, severity, state, ml_score) "
+      "VALUES (?, 'port_scan', ?, 'open', 0.95)";
+
+  if (sqlite3_prepare_v2(db, insert_alert, -1, &stmt, nullptr) != SQLITE_OK) {
+    return -1;
+  }
+
+  sqlite3_bind_int(stmt, 1, event_id);
+  sqlite3_bind_int(stmt, 2, severity);
+
+  if (sqlite3_step(stmt) != SQLITE_DONE) {
+    sqlite3_finalize(stmt);
+    return -1;
+  }
+
+  int alert_id = static_cast<int>(sqlite3_last_insert_rowid(db));
+  sqlite3_finalize(stmt);
+
+  // Finally add port scan details
+  const char *insert_details =
+      "INSERT INTO PortScanDetails "
+      "(alert_id, source_ip, scan_type, ports_scanned, port_count, "
+      "duration_seconds) "
+      "VALUES (?, ?, ?, ?, ?, ?)";
+
+  if (sqlite3_prepare_v2(db, insert_details, -1, &stmt, nullptr) != SQLITE_OK) {
+    return alert_id; // At least we created the alert
+  }
+
+  sqlite3_bind_int(stmt, 1, alert_id);
+  sqlite3_bind_text(stmt, 2, source_ip.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, scan_type.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 4, ports_scanned.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 5, port_count);
+  sqlite3_bind_int(stmt, 6, duration_seconds);
+
+  sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+
+  cout << "🚨 Port scan alert created: " << source_ip << " scanned "
+       << port_count << " ports" << endl;
+
+  return alert_id;
+}
+
+vector<NetworkFlow>
+ManagerBazaDate::GetRecentFlows(int admin_id, int limit,
+                                const string &protocol_filter) {
+  vector<NetworkFlow> results;
+  if (!db)
+    return results;
+
+  string sql =
+      "SELECT id, timestamp, admin_id, source_host, protocol, "
+      "local_addr, local_port, remote_addr, remote_port, state, process_name "
+      "FROM NetworkFlows WHERE admin_id = ?";
+
+  if (!protocol_filter.empty()) {
+    sql += " AND protocol = ?";
+  }
+  sql += " ORDER BY timestamp DESC LIMIT ?";
+
+  sqlite3_stmt *stmt;
+  if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    return results;
+  }
+
+  int param_idx = 1;
+  sqlite3_bind_int(stmt, param_idx++, admin_id);
+
+  if (!protocol_filter.empty()) {
+    sqlite3_bind_text(stmt, param_idx++, protocol_filter.c_str(), -1,
+                      SQLITE_TRANSIENT);
+  }
+
+  sqlite3_bind_int(stmt, param_idx, limit);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    NetworkFlow flow;
+    flow.id = sqlite3_column_int(stmt, 0);
+
+    const char *ts =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+    flow.timestamp = ts ? ts : "";
+
+    flow.admin_id = sqlite3_column_int(stmt, 2);
+
+    const char *host =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+    flow.source_host = host ? host : "";
+
+    const char *proto =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 4));
+    flow.protocol = proto ? proto : "";
+
+    const char *laddr =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 5));
+    flow.local_addr = laddr ? laddr : "";
+
+    flow.local_port = sqlite3_column_int(stmt, 6);
+
+    const char *raddr =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 7));
+    flow.remote_addr = raddr ? raddr : "";
+
+    flow.remote_port = sqlite3_column_int(stmt, 8);
+
+    const char *state =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 9));
+    flow.state = state ? state : "";
+
+    const char *proc =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 10));
+    flow.process_name = proc ? proc : "";
+
+    results.push_back(flow);
+  }
+
+  sqlite3_finalize(stmt);
+  return results;
+}
+
+ManagerBazaDate::FlowStats ManagerBazaDate::GetFlowStatistics(int admin_id,
+                                                              int minutes) {
+  FlowStats stats = {0, 0, 0, 0, {}};
+  if (!db)
+    return stats;
+
+  // Get protocol counts
+  string sql =
+      "SELECT protocol, state, COUNT(*) as cnt FROM NetworkFlows "
+      "WHERE admin_id = ? AND timestamp > datetime('now', '-' || ? || ' "
+      "minutes') "
+      "GROUP BY protocol, state";
+
+  sqlite3_stmt *stmt;
+  if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+    sqlite3_bind_int(stmt, 1, admin_id);
+    sqlite3_bind_int(stmt, 2, minutes);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      const char *proto =
+          reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+      const char *state =
+          reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+      int count = sqlite3_column_int(stmt, 2);
+
+      string protocol = proto ? proto : "";
+      string st = state ? state : "";
+
+      if (protocol == "TCP")
+        stats.tcp_count += count;
+      if (protocol == "UDP")
+        stats.udp_count += count;
+      if (st == "ESTABLISHED")
+        stats.established_count += count;
+      if (st == "LISTEN")
+        stats.listen_count += count;
+    }
+    sqlite3_finalize(stmt);
+  }
+
+  // Get top remotes
+  sql = "SELECT remote_addr, COUNT(*) as cnt FROM NetworkFlows "
+        "WHERE admin_id = ? AND timestamp > datetime('now', '-' || ? || ' "
+        "minutes') "
+        "AND remote_addr != '0.0.0.0' "
+        "GROUP BY remote_addr ORDER BY cnt DESC LIMIT 10";
+
+  if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+    sqlite3_bind_int(stmt, 1, admin_id);
+    sqlite3_bind_int(stmt, 2, minutes);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      const char *addr =
+          reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+      int count = sqlite3_column_int(stmt, 1);
+
+      if (addr) {
+        stats.top_remotes.push_back({addr, count});
+      }
+    }
+    sqlite3_finalize(stmt);
+  }
+
+  return stats;
+}

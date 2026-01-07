@@ -10,11 +10,12 @@ enum TipComanda {
   REGISTER,
   HEARTBEAT,
   BATCH_EVENT,
-  QUERY_EVENTS,  // NEW: Query last N events
-  CREATE_USER,   // NEW: Create a new user (admin only)
-  PROMOTE_USER,  // NEW: Promote user to admin (admin only)
-  QUERY_METRICS, // NEW: Query metrics for dashbaord
-  QUERY_ALERTS,  // NEW: Query ML alerts
+  QUERY_EVENTS,        // NEW: Query last N events
+  CREATE_USER,         // NEW: Create a new user (admin only)
+  PROMOTE_USER,        // NEW: Promote user to admin (admin only)
+  QUERY_METRICS,       // NEW: Query metrics for dashbaord
+  QUERY_ALERTS,        // NEW: Query ML alerts
+  QUERY_NETWORK_FLOWS, // NEW: Query network flow data
   RESULTS,
   COMMAND,
   ACK,
@@ -61,6 +62,12 @@ public:
   // Format: QUERY_ALERTS <username> <limit> [state]
   static string ProceseazaQUERY_ALERTS(const string &argumente,
                                        int socket_client, ManagerBazaDate *bd);
+
+  // NEW: Query network flows
+  // Format: QUERY_NETWORK_FLOWS <username> <limit> [protocol]
+  static string ProceseazaQUERY_NETWORK_FLOWS(const string &argumente,
+                                              int socket_client,
+                                              ManagerBazaDate *bd);
 
   // Genereaza raspunsuri text
   static string GenereazaACK(const string &stare, const string &mesaj);

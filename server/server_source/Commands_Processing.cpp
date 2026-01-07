@@ -31,6 +31,8 @@ TipComanda ProcesorComenzi::RecunoasteTipComanda(const string &mesaj_text) {
     return QUERY_METRICS;
   if (tip == "QUERY_ALERTS")
     return QUERY_ALERTS;
+  if (tip == "QUERY_NETWORK_FLOWS")
+    return QUERY_NETWORK_FLOWS;
   if (tip == "RESULTS")
     return RESULTS;
   if (tip == "COMMAND")
@@ -183,10 +185,6 @@ string ProcesorComenzi::ProceseazaQUERY_EVENTS(const string &argumente,
 
   ss >> comanda >> username >> limit;
 
-  cout << "🔍 QUERY_EVENTS primit de la socket " << socket_client << endl;
-  cout << "   Username: " << username << endl;
-  cout << "   Limit: " << limit << endl;
-
   // Parse optional filters (event_type=X, since=timestamp)
   optional<EventFilter> filter = nullopt;
   string token;
@@ -233,7 +231,9 @@ string ProcesorComenzi::ProceseazaQUERY_EVENTS(const string &argumente,
            << "|" << msg << ";";
   }
 
-  cout << "   📤 Returnez " << events.size() << " evenimente" << endl;
+  // Single concise log line
+  cout << "📋 QUERY_EVENTS: " << username << " -> " << events.size()
+       << " events" << endl;
   return GenereazaRESULTS(result.str());
 }
 
@@ -363,8 +363,7 @@ string ProcesorComenzi::ProceseazaQUERY_METRICS(const string &argumente,
 
   ss >> comanda >> username >> metric_type;
 
-  cout << "📊 QUERY_METRICS primit de la socket " << socket_client << endl;
-  cout << "   User: " << username << " Type: " << metric_type << endl;
+  // Single concise log (only on first call or errors)
 
   // Authorization Logic
   // 1. Resolve to admin_id (for Isolation)
@@ -462,10 +461,61 @@ string ProcesorComenzi::ProceseazaQUERY_ALERTS(const string &argumente,
   return GenereazaACK("RESULTS", result.str());
 }
 
-// Also add to RecunoasteTipComanda:
-// else if (primul_cuvant == "QUERY_ALERTS") return QUERY_ALERTS;
+// ============================================================================
+// QUERY_NETWORK_FLOWS - Query network flow data
+// Format: QUERY_NETWORK_FLOWS <username> <limit> [protocol]
+// Returns:
+// timestamp|source_host|protocol|local_addr|local_port|remote_addr|remote_port|state
+// ============================================================================
+string ProcesorComenzi::ProceseazaQUERY_NETWORK_FLOWS(const string &argumente,
+                                                      int socket_client,
+                                                      ManagerBazaDate *bd) {
+  stringstream ss(argumente);
+  string cmd, username, limit_str, protocol_filter;
 
-// And to Logic_Server.cpp switch statement:
-// case QUERY_ALERTS:
-//   raspuns_text = ProcesorComenzi::ProceseazaQUERY_ALERTS(comanda_text,
-//   socket_client, baza_date); break;
+  ss >> cmd >> username >> limit_str;
+
+  // Optional protocol filter
+  if (ss >> protocol_filter) {
+    // Got protocol filter
+  }
+
+  if (username.empty() || limit_str.empty()) {
+    return GenereazaACK(
+        "ERR", "Format: QUERY_NETWORK_FLOWS <username> <limit> [protocol]");
+  }
+
+  int limit = 100;
+  try {
+    limit = stoi(limit_str);
+  } catch (...) {
+    limit = 100;
+  }
+
+  // Get admin_id for user
+  int admin_id = bd->GetAdminIdForUser(username);
+  if (admin_id <= 0) {
+    return GenereazaACK("ERR", "User not found or not authorized");
+  }
+
+  // Query network flows
+  vector<NetworkFlow> flows =
+      bd->GetRecentFlows(admin_id, limit, protocol_filter);
+
+  // Format response:
+  // timestamp|source_host|protocol|local_addr|local_port|remote_addr|remote_port|state
+  stringstream result;
+
+  for (const auto &flow : flows) {
+    result << flow.timestamp << "|" << flow.source_host << "|" << flow.protocol
+           << "|" << flow.local_addr << "|" << flow.local_port << "|"
+           << flow.remote_addr << "|" << flow.remote_port << "|" << flow.state
+           << "\n";
+  }
+
+  if (flows.empty()) {
+    return GenereazaACK("OK", "No network flows found");
+  }
+
+  return result.str();
+}
