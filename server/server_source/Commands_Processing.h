@@ -16,6 +16,9 @@ enum TipComanda {
   QUERY_METRICS,       // NEW: Query metrics for dashbaord
   QUERY_ALERTS,        // NEW: Query ML alerts
   QUERY_NETWORK_FLOWS, // NEW: Query network flow data
+  LIST_USERS,          // NEW: List users under admin
+  DELETE_USER,         // NEW: Delete a user
+  LIST_AGENTS,         // NEW: List registered agents
   RESULTS,
   COMMAND,
   ACK,
@@ -68,6 +71,21 @@ public:
   static string ProceseazaQUERY_NETWORK_FLOWS(const string &argumente,
                                               int socket_client,
                                               ManagerBazaDate *bd);
+
+  // NEW: List users under admin
+  // Format: LIST_USERS <admin_username>
+  static string ProceseazaLIST_USERS(const string &argumente, int socket_client,
+                                     ManagerBazaDate *bd);
+
+  // NEW: Delete a user
+  // Format: DELETE_USER <admin_username> <target_username>
+  static string ProceseazaDELETE_USER(const string &argumente,
+                                      int socket_client, ManagerBazaDate *bd);
+
+  // NEW: List registered agents
+  // Format: LIST_AGENTS <admin_username>
+  static string ProceseazaLIST_AGENTS(const string &argumente,
+                                      int socket_client, ManagerBazaDate *bd);
 
   // Genereaza raspunsuri text
   static string GenereazaACK(const string &stare, const string &mesaj);

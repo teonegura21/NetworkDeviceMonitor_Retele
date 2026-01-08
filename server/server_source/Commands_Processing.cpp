@@ -33,6 +33,12 @@ TipComanda ProcesorComenzi::RecunoasteTipComanda(const string &mesaj_text) {
     return QUERY_ALERTS;
   if (tip == "QUERY_NETWORK_FLOWS")
     return QUERY_NETWORK_FLOWS;
+  if (tip == "LIST_USERS")
+    return LIST_USERS;
+  if (tip == "DELETE_USER")
+    return DELETE_USER;
+  if (tip == "LIST_AGENTS")
+    return LIST_AGENTS;
   if (tip == "RESULTS")
     return RESULTS;
   if (tip == "COMMAND")
@@ -518,4 +524,122 @@ string ProcesorComenzi::ProceseazaQUERY_NETWORK_FLOWS(const string &argumente,
   }
 
   return result.str();
+}
+
+// ============================================================================
+// LIST_USERS - List all users under this admin
+// Format: LIST_USERS <admin_username>
+// Returns: username|role|admin_id for each user
+// ============================================================================
+string ProcesorComenzi::ProceseazaLIST_USERS(const string &argumente,
+                                             int socket_client,
+                                             ManagerBazaDate *bd) {
+  stringstream ss(argumente);
+  string cmd, admin_username;
+  ss >> cmd >> admin_username;
+
+  if (admin_username.empty()) {
+    return GenereazaACK("ERR", "Format: LIST_USERS <admin_username>");
+  }
+
+  // Verify admin is actually an admin
+  string role = bd->GetUserRole(admin_username);
+  if (role != "admin") {
+    return GenereazaACK("ERR", "Not authorized");
+  }
+
+  // Get admin's user ID
+  auto admin_user = bd->GetUser(admin_username);
+  if (!admin_user) {
+    return GenereazaACK("ERR", "User not found");
+  }
+  int admin_id = admin_user->id;
+
+  // Query users - get all users with this admin_id or the admin themselves
+  vector<tuple<string, string, int>> users = bd->GetUsersForAdmin(admin_id);
+
+  stringstream result;
+  result << "count=" << users.size() << ";";
+  for (const auto &user : users) {
+    result << get<0>(user) << "|" << get<1>(user) << "|" << get<2>(user) << ";";
+  }
+
+  return GenereazaACK("RESULTS", result.str());
+}
+
+// ============================================================================
+// DELETE_USER - Delete a user (admin only)
+// Format: DELETE_USER <admin_username> <target_username>
+// ============================================================================
+string ProcesorComenzi::ProceseazaDELETE_USER(const string &argumente,
+                                              int socket_client,
+                                              ManagerBazaDate *bd) {
+  stringstream ss(argumente);
+  string cmd, admin_username, target_username;
+  ss >> cmd >> admin_username >> target_username;
+
+  if (admin_username.empty() || target_username.empty()) {
+    return GenereazaACK("ERR", "Format: DELETE_USER <admin> <target>");
+  }
+
+  // Verify admin
+  string role = bd->GetUserRole(admin_username);
+  if (role != "admin") {
+    return GenereazaACK("ERR", "Not authorized");
+  }
+
+  // Cannot delete yourself
+  if (admin_username == target_username) {
+    return GenereazaACK("ERR", "Cannot delete yourself");
+  }
+
+  // Delete user
+  bool success = bd->DeleteUser(target_username);
+  if (success) {
+    return GenereazaACK("OK", "User deleted: " + target_username);
+  } else {
+    return GenereazaACK("ERR", "Failed to delete user");
+  }
+}
+
+// ============================================================================
+// LIST_AGENTS - List registered agents for this admin
+// Format: LIST_AGENTS <admin_username>
+// Returns: hostname|ip|last_heartbeat|status for each agent
+// ============================================================================
+string ProcesorComenzi::ProceseazaLIST_AGENTS(const string &argumente,
+                                              int socket_client,
+                                              ManagerBazaDate *bd) {
+  stringstream ss(argumente);
+  string cmd, admin_username;
+  ss >> cmd >> admin_username;
+
+  if (admin_username.empty()) {
+    return GenereazaACK("ERR", "Format: LIST_AGENTS <admin_username>");
+  }
+
+  // Verify admin
+  string role = bd->GetUserRole(admin_username);
+  if (role != "admin") {
+    return GenereazaACK("ERR", "Not authorized");
+  }
+
+  // Get admin ID
+  int admin_id = bd->GetAdminIdForUser(admin_username);
+  if (admin_id < 0) {
+    return GenereazaACK("ERR", "User not found");
+  }
+
+  // Get agents for this admin
+  vector<Agent> agents = bd->GetAgentsForAdmin(admin_id);
+
+  stringstream result;
+  result << "count=" << agents.size() << ";";
+  for (const auto &agent : agents) {
+    // Agent struct has: hostname, src_ip, last_seen
+    result << agent.hostname << "|" << agent.src_ip << "|" << agent.last_seen
+           << "|online;";
+  }
+
+  return GenereazaACK("RESULTS", result.str());
 }

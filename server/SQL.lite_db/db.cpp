@@ -246,6 +246,52 @@ int ManagerBazaDate::CreateUser(const string &username, const string &password,
   return (int)sqlite3_last_insert_rowid(this->db);
 }
 
+// Get all users for an admin (admin themselves + their assigned users)
+vector<tuple<string, string, int>>
+ManagerBazaDate::GetUsersForAdmin(int admin_id) {
+  vector<tuple<string, string, int>> users;
+
+  const char *sql = "SELECT username, role, COALESCE(admin_id, 0) "
+                    "FROM Utilizatori "
+                    "WHERE id = ? OR admin_id = ? "
+                    "ORDER BY role DESC, username ASC";
+
+  sqlite3_stmt *stmt;
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    return users;
+  }
+
+  sqlite3_bind_int(stmt, 1, admin_id);
+  sqlite3_bind_int(stmt, 2, admin_id);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    string username = (const char *)sqlite3_column_text(stmt, 0);
+    string role = (const char *)sqlite3_column_text(stmt, 1);
+    int aid = sqlite3_column_int(stmt, 2);
+    users.push_back(make_tuple(username, role, aid));
+  }
+
+  sqlite3_finalize(stmt);
+  return users;
+}
+
+// Delete a user by username
+bool ManagerBazaDate::DeleteUser(const string &username) {
+  const char *sql = "DELETE FROM Utilizatori WHERE username = ?";
+
+  sqlite3_stmt *stmt;
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    return false;
+  }
+
+  sqlite3_bind_text(stmt, 1, username.c_str(), -1, SQLITE_TRANSIENT);
+
+  int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+
+  return (rc == SQLITE_DONE && sqlite3_changes(db) > 0);
+}
+
 // ============================================================================
 // Event/Log Management
 // ============================================================================

@@ -3,6 +3,7 @@
 #include <optional>
 #include <sqlite3.h>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace std;
@@ -174,6 +175,18 @@ public:
    */
   int CreateUser(const string &username, const string &password,
                  const string &role, int admin_id);
+
+  /**
+   * Get all users for an admin (admin themselves + their assigned users)
+   * @return Vector of tuples: (username, role, admin_id)
+   */
+  vector<tuple<string, string, int>> GetUsersForAdmin(int admin_id);
+
+  /**
+   * Delete a user by username
+   * @return true on success
+   */
+  bool DeleteUser(const string &username);
 
   /**
    * Promote a user to admin role (and clear their admin_id)

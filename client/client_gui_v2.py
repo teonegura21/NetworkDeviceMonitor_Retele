@@ -23,6 +23,9 @@ matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+# Local imports
+from user_preferences import get_preferences, FilterPresets
+
 # ==============================================================================
 # STYLING - Modern Dark Theme
 # ==============================================================================
@@ -355,12 +358,14 @@ class LoginDialog(QDialog):
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText("Enter username")
         self.username_input.setMinimumHeight(35)
+        self.username_input.returnPressed.connect(self._focus_password)  # Enter → password
         form_layout.addRow("Username:", self.username_input)
         
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Enter password")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setMinimumHeight(35)
+        self.password_input.returnPressed.connect(self.validate_and_accept)  # Enter → login
         form_layout.addRow("Password:", self.password_input)
         
         layout.addLayout(form_layout)
@@ -371,11 +376,13 @@ class LoginDialog(QDialog):
         self.login_btn = QPushButton("Login")
         self.login_btn.setMinimumHeight(35)
         self.login_btn.clicked.connect(self.validate_and_accept)
+        self.login_btn.setDefault(True)  # Make Login the default button
         
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setMinimumHeight(35)
         self.cancel_btn.setStyleSheet("background-color: #3d3d3d;")
         self.cancel_btn.clicked.connect(self.reject)
+        self.cancel_btn.setAutoDefault(False)  # Prevent Enter from triggering Cancel
         
         button_layout.addWidget(self.cancel_btn)
         button_layout.addWidget(self.login_btn)
@@ -391,6 +398,10 @@ class LoginDialog(QDialog):
         
         # Enter key triggers login
         self.password_input.returnPressed.connect(self.validate_and_accept)
+    
+    def _focus_password(self):
+        """Move focus to password field when Enter pressed in username"""
+        self.password_input.setFocus()
     
     def validate_and_accept(self):
         username = self.username_input.text().strip()
@@ -492,6 +503,8 @@ class MainWindow(QMainWindow):
         if "Login successful" in resp:
             # Success!
             self.current_user = creds['username']
+            # Load saved filter preferences
+            QTimer.singleShot(500, self._load_saved_preferences)
             return True
         else:
             # Failed
@@ -524,8 +537,9 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._create_network_tab(), "🌐 Network")
         self.tabs.addTab(self._create_console_tab(), "💻 Console")
         
-        # Admin-only tab
-        # We'll add this after we know the user role
+        # Admin-only tab (added for all, visibility controlled by role)
+        self.admin_tab = self._create_admin_tab()
+        self.admin_tab_index = self.tabs.addTab(self.admin_tab, "⚙️ Admin")
         
         # Status bar at bottom
         self.statusBar().showMessage("Ready")
@@ -561,47 +575,82 @@ class MainWindow(QMainWindow):
         return widget
     
     def _create_events_tab(self) -> QWidget:
-        """Events table with filtering"""
+        """Events table with advanced filtering"""
         widget = QWidget()
         layout = QVBoxLayout()
         widget.setLayout(layout)
         
-        # Filter toolbar
-        filter_toolbar = QWidget()
-        filter_layout = QHBoxLayout()
-        filter_toolbar.setLayout(filter_layout)
+        # Filter panel - Two rows for better organization
+        filter_panel = QGroupBox("🔍 Filters")
+        filter_panel.setStyleSheet("QGroupBox { font-weight: bold; padding-top: 10px; }")
+        filter_vbox = QVBoxLayout()
+        filter_panel.setLayout(filter_vbox)
         
-        filter_layout.addWidget(QLabel("🔍 Search:"))
+        # Row 1: Search, Severity, Time Range
+        row1 = QHBoxLayout()
+        
+        row1.addWidget(QLabel("Search:"))
         self.event_search = QLineEdit()
         self.event_search.setPlaceholderText("Search messages...")
-        self.event_search.setFixedWidth(300)
+        self.event_search.setFixedWidth(200)
         self.event_search.textChanged.connect(self._filter_events)
-        filter_layout.addWidget(self.event_search)
+        row1.addWidget(self.event_search)
         
-        filter_layout.addWidget(QLabel("Severity:"))
+        row1.addWidget(QLabel("Severity:"))
         self.severity_filter = QComboBox()
         self.severity_filter.addItems(["All", "0-Emergency", "1-Alert", "2-Critical", "3-Error", "4-Warning", "5-Notice", "6-Info", "7-Debug"])
         self.severity_filter.currentIndexChanged.connect(self._filter_events)
-        filter_layout.addWidget(self.severity_filter)
+        row1.addWidget(self.severity_filter)
         
-        filter_layout.addWidget(QLabel("Limit:"))
+        row1.addWidget(QLabel("Time Range:"))
+        self.time_range_filter = QComboBox()
+        self.time_range_filter.addItems(["All", "Last 1 Hour", "Last 24 Hours", "Last 7 Days", "Last 30 Days"])
+        self.time_range_filter.currentIndexChanged.connect(self._on_filter_changed)
+        row1.addWidget(self.time_range_filter)
+        
+        row1.addStretch()
+        filter_vbox.addLayout(row1)
+        
+        # Row 2: Source IP, Event Type, Limit, Actions
+        row2 = QHBoxLayout()
+        
+        row2.addWidget(QLabel("Source IP:"))
+        self.source_ip_filter = QLineEdit()
+        self.source_ip_filter.setPlaceholderText("e.g. 192.168.1.1")
+        self.source_ip_filter.setFixedWidth(150)
+        self.source_ip_filter.textChanged.connect(self._filter_events)
+        row2.addWidget(self.source_ip_filter)
+        
+        row2.addWidget(QLabel("Event Type:"))
+        self.event_type_filter = QComboBox()
+        self.event_type_filter.addItems(["All", "syslog", "auth", "network", "security"])
+        self.event_type_filter.currentIndexChanged.connect(self._filter_events)
+        row2.addWidget(self.event_type_filter)
+        
+        row2.addWidget(QLabel("Limit:"))
         self.event_limit = QSpinBox()
         self.event_limit.setRange(10, 500)
         self.event_limit.setValue(100)
-        filter_layout.addWidget(self.event_limit)
+        row2.addWidget(self.event_limit)
         
         refresh_btn = QPushButton("↻ Refresh")
         refresh_btn.clicked.connect(self._fetch_events)
-        filter_layout.addWidget(refresh_btn)
+        row2.addWidget(refresh_btn)
         
-        filter_layout.addStretch()
+        save_filter_btn = QPushButton("💾 Save Filters")
+        save_filter_btn.setStyleSheet("background-color: #2d5d7d;")
+        save_filter_btn.clicked.connect(self._save_event_filters)
+        row2.addWidget(save_filter_btn)
+        
+        row2.addStretch()
         
         export_btn = QPushButton("📄 Export CSV")
         export_btn.setStyleSheet("background-color: #2d7d2d;")
         export_btn.clicked.connect(self._export_events)
-        filter_layout.addWidget(export_btn)
+        row2.addWidget(export_btn)
         
-        layout.addWidget(filter_toolbar)
+        filter_vbox.addLayout(row2)
+        layout.addWidget(filter_panel)
         
         # Table
         self.events_table = QTableWidget()
@@ -677,7 +726,64 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(charts_layout)
         
+        # Widget Configuration Panel (Phase 4)
+        config_group = QGroupBox("📐 Dashboard Widgets")
+        config_layout = QHBoxLayout()
+        config_group.setLayout(config_layout)
+        
+        self.widget_line_check = self.widgets_checkbox("Events Timeline", True, self.canvas_line)
+        config_layout.addWidget(self.widget_line_check)
+        
+        self.widget_pie_check = self.widgets_checkbox("Severity Chart", True, self.canvas_pie)
+        config_layout.addWidget(self.widget_pie_check)
+        
+        self.widget_bar_check = self.widgets_checkbox("Top Sources", True, self.canvas_bar)
+        config_layout.addWidget(self.widget_bar_check)
+        
+        save_layout_btn = QPushButton("💾 Save Layout")
+        save_layout_btn.clicked.connect(self._save_dashboard_layout)
+        config_layout.addWidget(save_layout_btn)
+        
+        config_layout.addStretch()
+        layout.addWidget(config_group)
+        
         return widget
+    
+    def widgets_checkbox(self, label: str, checked: bool, widget):
+        """Create a checkbox that toggles widget visibility"""
+        from PyQt6.QtWidgets import QCheckBox
+        checkbox = QCheckBox(label)
+        checkbox.setChecked(checked)
+        checkbox.stateChanged.connect(lambda state: widget.setVisible(state == 2))
+        return checkbox
+    
+    def _save_dashboard_layout(self):
+        """Save dashboard widget visibility preferences"""
+        prefs = get_preferences()
+        layout_config = {
+            "show_timeline": self.widget_line_check.isChecked(),
+            "show_severity": self.widget_pie_check.isChecked(),
+            "show_sources": self.widget_bar_check.isChecked()
+        }
+        prefs.set(self.current_user, "dashboard_layout", layout_config)
+        self.log("✅ Dashboard layout saved")
+    
+    def _load_dashboard_layout(self):
+        """Load saved dashboard widget preferences"""
+        prefs = get_preferences()
+        layout_config = prefs.get(self.current_user, "dashboard_layout", {})
+        
+        if layout_config:
+            if "show_timeline" in layout_config:
+                self.widget_line_check.setChecked(layout_config["show_timeline"])
+                self.canvas_line.setVisible(layout_config["show_timeline"])
+            if "show_severity" in layout_config:
+                self.widget_pie_check.setChecked(layout_config["show_severity"])
+                self.canvas_pie.setVisible(layout_config["show_severity"])
+            if "show_sources" in layout_config:
+                self.widget_bar_check.setChecked(layout_config["show_sources"])
+                self.canvas_bar.setVisible(layout_config["show_sources"])
+    
     
     def _create_stat_card(self, title, value) -> QGroupBox:
         """Create stats card widget"""
@@ -918,14 +1024,28 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(stats_row)
         
-        # Toolbar
+        # Toolbar with filters
         toolbar = QHBoxLayout()
         
+        toolbar.addWidget(QLabel("Protocol:"))
         self.network_protocol_filter = QComboBox()
         self.network_protocol_filter.addItems(["All", "TCP", "UDP"])
         self.network_protocol_filter.currentTextChanged.connect(self._on_network_filter_changed)
-        toolbar.addWidget(QLabel("Protocol:"))
         toolbar.addWidget(self.network_protocol_filter)
+        
+        toolbar.addWidget(QLabel("Port:"))
+        self.network_port_filter = QLineEdit()
+        self.network_port_filter.setPlaceholderText("e.g. 443")
+        self.network_port_filter.setFixedWidth(80)
+        self.network_port_filter.textChanged.connect(self._filter_network_table)
+        toolbar.addWidget(self.network_port_filter)
+        
+        toolbar.addWidget(QLabel("Remote IP:"))
+        self.network_ip_filter = QLineEdit()
+        self.network_ip_filter.setPlaceholderText("e.g. 192.168")
+        self.network_ip_filter.setFixedWidth(120)
+        self.network_ip_filter.textChanged.connect(self._filter_network_table)
+        toolbar.addWidget(self.network_ip_filter)
         
         refresh_btn = QPushButton("↻ Refresh")
         refresh_btn.clicked.connect(self._fetch_network_flows)
@@ -1005,7 +1125,7 @@ class MainWindow(QMainWindow):
         if protocol == "All":
             protocol = ""
         
-        cmd = f"QUERY_NETWORK_FLOWS {self.current_user} 100 {protocol}"
+        cmd = f"QUERY_NETWORK_FLOWS {self.current_user} 1000 {protocol}"
         if self.client.send(cmd):
             response = self.client.receive()
             if response:
@@ -1103,7 +1223,268 @@ class MainWindow(QMainWindow):
         """Handle protocol filter change"""
         self._fetch_network_flows()
 
+    def _filter_network_table(self):
+        """Filter network table by port and IP (client-side)"""
+        port_filter = self.network_port_filter.text().strip() if hasattr(self, 'network_port_filter') else ""
+        ip_filter = self.network_ip_filter.text().strip() if hasattr(self, 'network_ip_filter') else ""
+        
+        visible_count = 0
+        for row in range(self.network_table.rowCount()):
+            show = True
+            
+            # Port filter (check columns 4 and 6 - local_port and remote_port)
+            if port_filter:
+                local_port = self.network_table.item(row, 4)
+                remote_port = self.network_table.item(row, 6)
+                local_match = local_port and port_filter in local_port.text()
+                remote_match = remote_port and port_filter in remote_port.text()
+                if not (local_match or remote_match):
+                    show = False
+            
+            # IP filter (check column 5 - remote_addr)
+            if ip_filter and show:
+                remote_ip = self.network_table.item(row, 5)
+                if not (remote_ip and ip_filter in remote_ip.text()):
+                    show = False
+            
+            self.network_table.setRowHidden(row, not show)
+            if show:
+                visible_count += 1
+        
+        self.network_stats_label.setText(f"{visible_count} flows (filtered)")
+
+    def _create_admin_tab(self) -> QWidget:
+        """Admin panel for user and agent management"""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        widget.setLayout(layout)
+        
+        # Title
+        title = QLabel("⚙️ Administration Panel")
+        title.setStyleSheet("font-size: 16pt; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title)
+        
+        # --- Users Section ---
+        users_group = QGroupBox("👤 User Management")
+        users_layout = QVBoxLayout()
+        users_group.setLayout(users_layout)
+        
+        # Users toolbar
+        users_toolbar = QHBoxLayout()
+        self.users_count_label = QLabel("Users: 0")
+        users_toolbar.addWidget(self.users_count_label)
+        users_toolbar.addStretch()
+        
+        refresh_users_btn = QPushButton("↻ Refresh")
+        refresh_users_btn.clicked.connect(self._fetch_users)
+        users_toolbar.addWidget(refresh_users_btn)
+        
+        add_user_btn = QPushButton("➕ Add User")
+        add_user_btn.setStyleSheet("background-color: #27ae60;")
+        add_user_btn.clicked.connect(self._show_add_user_dialog)
+        users_toolbar.addWidget(add_user_btn)
+        
+        users_layout.addLayout(users_toolbar)
+        
+        # Users table
+        self.users_table = QTableWidget()
+        self.users_table.setColumnCount(4)
+        self.users_table.setHorizontalHeaderLabels(["Username", "Role", "Admin ID", "Actions"])
+        header = self.users_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        users_layout.addWidget(self.users_table)
+        
+        layout.addWidget(users_group)
+        
+        # --- Agents Section ---
+        agents_group = QGroupBox("🖥️ Registered Agents")
+        agents_layout = QVBoxLayout()
+        agents_group.setLayout(agents_layout)
+        
+        # Agents toolbar
+        agents_toolbar = QHBoxLayout()
+        self.agents_count_label = QLabel("Agents: 0")
+        agents_toolbar.addWidget(self.agents_count_label)
+        agents_toolbar.addStretch()
+        
+        refresh_agents_btn = QPushButton("↻ Refresh")
+        refresh_agents_btn.clicked.connect(self._fetch_agents)
+        agents_toolbar.addWidget(refresh_agents_btn)
+        
+        agents_layout.addLayout(agents_toolbar)
+        
+        # Agents table
+        self.agents_table = QTableWidget()
+        self.agents_table.setColumnCount(4)
+        self.agents_table.setHorizontalHeaderLabels(["Hostname", "IP Address", "Last Seen", "Status"])
+        header = self.agents_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        agents_layout.addWidget(self.agents_table)
+        
+        layout.addWidget(agents_group)
+        
+        return widget
     
+    def _fetch_users(self):
+        """Fetch users list from server"""
+        if not self.client or not self.current_user:
+            return
+        
+        cmd = f"LIST_USERS {self.current_user}"
+        if self.client.send(cmd):
+            response = self.client.receive()
+            self.log(f"DEBUG LIST_USERS response: {response[:200] if response else 'None'}")
+            if response and "RESULTS" in response:
+                self._populate_users_table(response)
+    
+    def _populate_users_table(self, response: str):
+        """Parse and display users data"""
+        try:
+            # Format: ACK RESULTS count=N;user|role|admin_id;...
+            if "count=" not in response:
+                return
+            
+            parts = response.split(";")
+            self.users_table.setRowCount(0)
+            
+            for part in parts[1:]:  # Skip count= part
+                if not part.strip() or "|" not in part:
+                    continue
+                fields = part.split("|")
+                if len(fields) >= 3:
+                    row = self.users_table.rowCount()
+                    self.users_table.insertRow(row)
+                    
+                    self.users_table.setItem(row, 0, QTableWidgetItem(fields[0]))
+                    
+                    role_item = QTableWidgetItem(fields[1])
+                    if fields[1] == "admin":
+                        role_item.setForeground(QColor("#e74c3c"))
+                    self.users_table.setItem(row, 1, role_item)
+                    
+                    self.users_table.setItem(row, 2, QTableWidgetItem(fields[2]))
+                    
+                    # Delete button (only for non-self users)
+                    if fields[0] != self.current_user:
+                        delete_btn = QPushButton("🗑️ Delete")
+                        delete_btn.setStyleSheet("background-color: #c0392b; padding: 2px 8px;")
+                        delete_btn.clicked.connect(lambda _, u=fields[0]: self._delete_user(u))
+                        self.users_table.setCellWidget(row, 3, delete_btn)
+                    else:
+                        self.users_table.setItem(row, 3, QTableWidgetItem("(current)"))
+            
+            self.users_count_label.setText(f"Users: {self.users_table.rowCount()}")
+        except Exception as e:
+            self.log(f"Error parsing users: {e}")
+    
+    def _show_add_user_dialog(self):
+        """Show dialog to add new user"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add New User")
+        dialog.setMinimumWidth(300)
+        
+        layout = QFormLayout(dialog)
+        
+        username_input = QLineEdit()
+        password_input = QLineEdit()
+        password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        role_combo = QComboBox()
+        role_combo.addItems(["user", "admin"])
+        
+        layout.addRow("Username:", username_input)
+        layout.addRow("Password:", password_input)
+        layout.addRow("Role:", role_combo)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            username = username_input.text().strip()
+            password = password_input.text()
+            role = role_combo.currentText()
+            
+            if username and password:
+                self._create_user(username, password, role)
+    
+    def _create_user(self, username: str, password: str, role: str):
+        """Create new user via server"""
+        cmd = f"CREATE_USER {self.current_user} {username} {password} {role}"
+        if self.client.send(cmd):
+            response = self.client.receive()
+            if "OK" in response:
+                self.log(f"✅ User created: {username}")
+                self._fetch_users()
+            else:
+                self.log(f"❌ Failed to create user: {response}")
+    
+    def _delete_user(self, username: str):
+        """Delete user after confirmation"""
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                     f"Delete user '{username}'?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            cmd = f"DELETE_USER {self.current_user} {username}"
+            if self.client.send(cmd):
+                response = self.client.receive()
+                if "OK" in response:
+                    self.log(f"✅ User deleted: {username}")
+                    self._fetch_users()
+                else:
+                    self.log(f"❌ Failed to delete: {response}")
+    
+    def _fetch_agents(self):
+        """Fetch agents list from server"""
+        if not self.client or not self.current_user:
+            return
+        
+        cmd = f"LIST_AGENTS {self.current_user}"
+        if self.client.send(cmd):
+            response = self.client.receive()
+            self.log(f"DEBUG LIST_AGENTS response: {response[:200] if response else 'None'}")
+            if response and "RESULTS" in response:
+                self._populate_agents_table(response)
+    
+    def _populate_agents_table(self, response: str):
+        """Parse and display agents data"""
+        try:
+            # Format: ACK RESULTS count=N;hostname|ip|last_seen|status;...
+            if "count=" not in response:
+                return
+            
+            parts = response.split(";")
+            self.agents_table.setRowCount(0)
+            
+            for part in parts[1:]:
+                if not part.strip() or "|" not in part:
+                    continue
+                fields = part.split("|")
+                if len(fields) >= 4:
+                    row = self.agents_table.rowCount()
+                    self.agents_table.insertRow(row)
+                    
+                    self.agents_table.setItem(row, 0, QTableWidgetItem(fields[0]))
+                    self.agents_table.setItem(row, 1, QTableWidgetItem(fields[1]))
+                    self.agents_table.setItem(row, 2, QTableWidgetItem(fields[2]))
+                    
+                    status_item = QTableWidgetItem(fields[3])
+                    if "online" in fields[3].lower():
+                        status_item.setForeground(QColor("#27ae60"))
+                    else:
+                        status_item.setForeground(QColor("#e74c3c"))
+                    self.agents_table.setItem(row, 3, status_item)
+            
+            self.agents_count_label.setText(f"Agents: {self.agents_table.rowCount()}")
+        except Exception as e:
+            self.log(f"Error parsing agents: {e}")
+
     def _create_console_tab(self) -> QWidget:
         """Interactive console - can send commands to server"""
         widget = QWidget()
@@ -1206,6 +1587,18 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'tabs') and self.tabs.currentIndex() == 1:  # Dashboard is tab 1
             self._fetch_metrics()
     
+    def _convert_to_local(self, utc_timestamp: str) -> str:
+        """Convert UTC timestamp to Romania timezone (UTC+2)"""
+        try:
+            from datetime import datetime, timedelta
+            # Parse UTC timestamp
+            dt = datetime.strptime(utc_timestamp, '%Y-%m-%d %H:%M:%S')
+            # Add 2 hours for Romania timezone
+            local_dt = dt + timedelta(hours=2)
+            return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            return utc_timestamp  # Return original if parsing fails
+    
     def _fetch_events(self):
         """Fetch events from server"""
         limit = self.event_limit.value() if hasattr(self, 'event_limit') else 100
@@ -1225,9 +1618,11 @@ class MainWindow(QMainWindow):
                             fields = evt.split('|')
                             if len(fields) >= 5:
                                 # New format: id|timestamp|src_ip|event_type|message
+                                # Convert UTC to Romania timezone (UTC+2)
+                                ts = self._convert_to_local(fields[1][:19])
                                 event_data = {
                                     'id': fields[0],
-                                    'timestamp': fields[1][:19],
+                                    'timestamp': ts,
                                     'source': fields[2],
                                     'type': fields[3],
                                     'message': fields[4],
@@ -1236,9 +1631,10 @@ class MainWindow(QMainWindow):
                                 self.all_events.append(event_data)
                             elif len(fields) >= 4:
                                 # Old format fallback: id|timestamp|event_type|message
+                                ts = self._convert_to_local(fields[1][:19])
                                 event_data = {
                                     'id': fields[0],
-                                    'timestamp': fields[1][:19],
+                                    'timestamp': ts,
                                     'source': 'N/A',
                                     'type': fields[2],
                                     'message': fields[3],
@@ -1257,6 +1653,21 @@ class MainWindow(QMainWindow):
         
         search = self.event_search.text().lower()
         sev_idx = self.severity_filter.currentIndex()
+        source_ip = self.source_ip_filter.text().strip() if hasattr(self, 'source_ip_filter') else ""
+        event_type = self.event_type_filter.currentText() if hasattr(self, 'event_type_filter') else "All"
+        time_range = self.time_range_filter.currentText() if hasattr(self, 'time_range_filter') else "All"
+        
+        # Calculate time threshold based on time range
+        from datetime import datetime, timedelta
+        time_threshold = None
+        if time_range == "Last 1 Hour":
+            time_threshold = datetime.now() - timedelta(hours=1)
+        elif time_range == "Last 24 Hours":
+            time_threshold = datetime.now() - timedelta(hours=24)
+        elif time_range == "Last 7 Days":
+            time_threshold = datetime.now() - timedelta(days=7)
+        elif time_range == "Last 30 Days":
+            time_threshold = datetime.now() - timedelta(days=30)
         
         filtered = []
         for evt in self.all_events:
@@ -1269,6 +1680,28 @@ class MainWindow(QMainWindow):
                 target_sev = str(sev_idx - 1)
                 if evt['severity'] != target_sev:
                     continue
+            
+            # Source IP filter
+            if source_ip and source_ip not in evt.get('source', ''):
+                continue
+            
+            # Event Type filter
+            if event_type != "All" and evt.get('type', '') != event_type:
+                continue
+            
+            # Time Range filter
+            if time_threshold:
+                try:
+                    # Parse timestamp (format: 2026-01-07 20:04:06 or ISO format)
+                    ts = evt.get('timestamp', '')
+                    if 'T' in ts:
+                        evt_time = datetime.fromisoformat(ts.split('+')[0].split('.')[0])
+                    else:
+                        evt_time = datetime.strptime(ts[:19], '%Y-%m-%d %H:%M:%S')
+                    if evt_time < time_threshold:
+                        continue
+                except:
+                    pass  # Keep event if timestamp parsing fails
             
             filtered.append(evt)
         
@@ -1295,6 +1728,55 @@ class MainWindow(QMainWindow):
         
         self.events_table.setSortingEnabled(True)
         self.event_stats.setText(f"Showing {len(filtered)} of {len(self.all_events)} events")
+    
+    def _on_filter_changed(self):
+        """Handle filter change - refresh from server if needed"""
+        self._filter_events()
+    
+    def _save_event_filters(self):
+        """Save current filter settings to preferences"""
+        prefs = get_preferences()
+        filters = {
+            "severity": self.severity_filter.currentIndex(),
+            "time_range": self.time_range_filter.currentText(),
+            "source_ip": self.source_ip_filter.text(),
+            "event_type": self.event_type_filter.currentText(),
+            "limit": self.event_limit.value()
+        }
+        prefs.set(self.current_user, "event_filters", filters)
+        self.log("✅ Filter settings saved")
+    
+    def _load_event_filters(self):
+        """Load saved filter settings"""
+        prefs = get_preferences()
+        filters = prefs.get(self.current_user, "event_filters", {})
+        
+        if filters:
+            if "severity" in filters:
+                self.severity_filter.setCurrentIndex(filters["severity"])
+            if "time_range" in filters and hasattr(self, 'time_range_filter'):
+                idx = self.time_range_filter.findText(filters["time_range"])
+                if idx >= 0:
+                    self.time_range_filter.setCurrentIndex(idx)
+            if "source_ip" in filters and hasattr(self, 'source_ip_filter'):
+                self.source_ip_filter.setText(filters["source_ip"])
+            if "event_type" in filters and hasattr(self, 'event_type_filter'):
+                idx = self.event_type_filter.findText(filters["event_type"])
+                if idx >= 0:
+                    self.event_type_filter.setCurrentIndex(idx)
+            if "limit" in filters:
+                self.event_limit.setValue(filters["limit"])
+    
+    def _load_saved_preferences(self):
+        """Load all saved preferences after login"""
+        try:
+            self._load_event_filters()
+            if hasattr(self, 'widget_line_check'):
+                self._load_dashboard_layout()
+            self.log("✅ Loaded saved preferences")
+        except Exception as e:
+            self.log(f"⚠️ Could not load preferences: {e}")
+    
     
     def _export_events(self):
         """Export events to CSV"""
@@ -1437,9 +1919,27 @@ class MainWindow(QMainWindow):
             print(f"Dashboard update error: {e}")
     
     def disconnect_and_exit(self):
-        """Clean disconnect and close"""
+        """Disconnect and return to login (not exit)"""
         self.refresh_timer.stop()
         self.client.disconnect()
+        self.hide()  # Hide main window instead of closing
+        
+        # Show login dialog again
+        login = LoginDialog()
+        if login.exec() == QDialog.DialogCode.Accepted:
+            creds = login.get_credentials()
+            # Reconnect with new credentials
+            self.client = NetworkClient()
+            success, msg = self.client.connect(creds['ip'], creds['port'])
+            if success:
+                self.client.send(f"LOGIN {creds['username']} {creds['password']}")
+                resp = self.client.receive()
+                if "Login successful" in resp:
+                    self.current_user = creds['username']
+                    self.refresh_timer.start()
+                    self.show()
+                    return
+        # If login failed or cancelled, exit
         self.close()
     
     def closeEvent(self, event):

@@ -232,6 +232,18 @@ void Server::ProcseazaClient(int socket_client) {
         raspuns = ProcesorComenzi::ProceseazaQUERY_NETWORK_FLOWS(
             comanda_curata, socket_client, this->baza_date);
         break;
+      case LIST_USERS:
+        raspuns = ProcesorComenzi::ProceseazaLIST_USERS(
+            comanda_curata, socket_client, this->baza_date);
+        break;
+      case DELETE_USER:
+        raspuns = ProcesorComenzi::ProceseazaDELETE_USER(
+            comanda_curata, socket_client, this->baza_date);
+        break;
+      case LIST_AGENTS:
+        raspuns = ProcesorComenzi::ProceseazaLIST_AGENTS(
+            comanda_curata, socket_client, this->baza_date);
+        break;
       case NECUNOSCUT:
       default:
         // Incercam sa vedem daca e formatul "comanda : argument" specific
