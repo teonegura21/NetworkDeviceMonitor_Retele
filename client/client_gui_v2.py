@@ -449,6 +449,9 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.refresh_data)
         
+        # Dashboard configuration
+        self.dashboard_time_range = "24h"  # Default: Last 24 hours
+        
         # First show login (loop until success or cancel)
         if not self._login_loop():
             sys.exit(0)
@@ -698,6 +701,39 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(cards_layout)
         
+        # ====== MODULAR CONTROLS ======
+        controls_group = QGroupBox("⚙️ Dashboard Configuration")
+        controls_layout = QHBoxLayout()
+        controls_group.setLayout(controls_layout)
+        
+        # Time Range Selector
+        controls_layout.addWidget(QLabel("📅 Time Range:"))
+        self.time_range_combo = QComboBox()
+        self.time_range_combo.addItems(["Last 1 Hour", "Last 6 Hours", "Last 24 Hours", "Last 7 Days", "Last 30 Days"])
+        self.time_range_combo.setCurrentIndex(2)  # Default: Last 24 Hours
+        self.time_range_combo.currentIndexChanged.connect(self._on_time_range_changed)
+        controls_layout.addWidget(self.time_range_combo)
+        
+        controls_layout.addSpacing(20)
+        
+        # Refresh Rate Selector
+        controls_layout.addWidget(QLabel("🔄 Auto-Refresh:"))
+        self.refresh_rate_combo = QComboBox()
+        self.refresh_rate_combo.addItems(["Off", "5 seconds", "10 seconds", "30 seconds", "60 seconds"])
+        self.refresh_rate_combo.setCurrentIndex(2)  # Default: 10 seconds
+        self.refresh_rate_combo.currentIndexChanged.connect(self._on_refresh_rate_changed)
+        controls_layout.addWidget(self.refresh_rate_combo)
+        
+        controls_layout.addSpacing(20)
+        
+        # Manual Refresh Button
+        refresh_btn = QPushButton("🔃 Refresh Now")
+        refresh_btn.clicked.connect(self._refresh_dashboard)
+        controls_layout.addWidget(refresh_btn)
+        
+        controls_layout.addStretch()
+        layout.addWidget(controls_group)
+        
         # Charts
         charts_layout = QGridLayout()
         
@@ -784,6 +820,32 @@ class MainWindow(QMainWindow):
                 self.widget_bar_check.setChecked(layout_config["show_sources"])
                 self.canvas_bar.setVisible(layout_config["show_sources"])
     
+    def _on_time_range_changed(self, index):
+        """Handle time range selection change"""
+        ranges = {0: "1h", 1: "6h", 2: "24h", 3: "7d", 4: "30d"}
+        self.dashboard_time_range = ranges.get(index, "24h")
+        self.log(f"📅 Time range changed to: {self.time_range_combo.currentText()}")
+        self._refresh_dashboard()
+    
+    def _on_refresh_rate_changed(self, index):
+        """Handle refresh rate selection change"""
+        rates = {0: 0, 1: 5000, 2: 10000, 3: 30000, 4: 60000}
+        new_rate = rates.get(index, 10000)
+        
+        if new_rate == 0:
+            self.refresh_timer.stop()
+            self.log("🔄 Auto-refresh disabled")
+        else:
+            self.refresh_timer.setInterval(new_rate)
+            if not self.refresh_timer.isActive():
+                self.refresh_timer.start()
+            self.log(f"🔄 Refresh rate: {self.refresh_rate_combo.currentText()}")
+    
+    def _refresh_dashboard(self):
+        """Manual dashboard refresh"""
+        self.log("🔃 Refreshing dashboard...")
+        # Trigger metric fetching
+        self._on_timer()
     
     def _create_stat_card(self, title, value) -> QGroupBox:
         """Create stats card widget"""

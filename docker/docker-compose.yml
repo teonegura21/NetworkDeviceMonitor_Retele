@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Container 1: Normal Agent (WEB/Workstation)
+  normal-agent:
+    build:
+      context: ./normal-agent
+      dockerfile: Dockerfile
+    container_name: normal-agent
+    hostname: workstation-01
+    environment:
+      # Use Host IP from docker0 interface (172.17.0.1)
+      - SIEM_SERVER=172.17.0.1
+      - SIEM_PORT=514
+    volumes:
+      - ../../agent/NMS_Agent:/usr/local/bin/nms-agent
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    command: /app/start_normal.sh
+
+  # Container 2: Attacker (Kali-like)
+  attacker:
+    build:
+      context: ./attacker
+      dockerfile: Dockerfile
+    container_name: attacker
+    hostname: suspicious-host
+    environment:
+      # Use Host IP from docker0 interface (172.17.0.1)
+      - SIEM_SERVER=172.17.0.1
+      # Target the host machine logic server or VM
+      - TARGET_IP=172.17.0.1
+      - SIEM_PORT=514
+    volumes:
+      - ../../agent/NMS_Agent:/usr/local/bin/nms-agent
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+    command: /app/start_attacker.sh

@@ -159,6 +159,18 @@ void SyslogReceiver::ProcessMessage(const string &raw_msg,
   if (agent.has_value()) {
     admin_id = agent->admin_id;
     db->UpdateAgentHeartbeat(agent->id);
+  } else {
+    // Agent not found - Auto-Register it!
+    cout << "🆕 Auto-registering new agent: " << msg.hostname << " (" << src_ip
+         << ")" << endl;
+    // Default to admin_id=1, name=hostname, os=Unknown, version=1.0
+    db->RegisterAgent(1, msg.hostname, msg.hostname, "Unknown", "1.0", src_ip);
+
+    // Refresh to get the new ID
+    agent = db->GetAgentByHost(msg.hostname, src_ip);
+    if (agent.has_value()) {
+      admin_id = agent->admin_id;
+    }
   }
 
   // 3. Check for specialized message types (NETWORK_FLOW, PORT_SCAN)

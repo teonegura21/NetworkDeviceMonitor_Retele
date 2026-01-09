@@ -4,7 +4,9 @@
 #include "PortScanDetector.h"
 #include "SyslogFormatter.h"
 #include <chrono>
+#include <cstdio>
 #include <iostream>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -12,11 +14,10 @@ using namespace std;
 using namespace NMS;
 
 // ============================================================================
-// CONFIGURATION
+// CONFIGURATION GLOBALS
 // ============================================================================
-
-const string SERVER_IP = "127.0.0.1";
-const int SERVER_PORT = 514; // Syslog port
+string SERVER_IP = "192.168.122.1"; // HARDCODED FOR VM
+int SERVER_PORT = 514;
 const TransportProtocol PROTOCOL = TCP;
 
 // Monitoring intervals (milliseconds)
@@ -25,21 +26,42 @@ const int NETWORK_FLOW_INTERVAL = 10000;   // Collect flows every 10 seconds
 const int PORT_SCAN_CHECK_INTERVAL = 5000; // Check for scans every 5 seconds
 
 // ============================================================================
+// CONFIG LOADER (DISABLED TO FORCE IP)
+// ============================================================================
+void LoadConfig() {
+  // Disabled to guarantee connection to 192.168.122.1
+  /*
+  FILE* f = fopen("nms_agent.conf", "r");
+  if (!f) f = fopen("/etc/nms-agent/nms_agent.conf", "r");
+
+  if (f) {
+      char line[256];
+      while (fgets(line, sizeof(line), f)) {
+          string s(line);
+          if (s.find("server_ip=") == 0) {
+              size_t end = s.find_first_of("\r\n");
+              SERVER_IP = s.substr(10, end - 10);
+          }
+          if (s.find("server_port=") == 0) {
+              try {
+                  SERVER_PORT = stoi(s.substr(12));
+              } catch(...) {}
+          }
+      }
+      fclose(f);
+      cout << "📄 Loaded config: Server=" << SERVER_IP << ":" << SERVER_PORT <<
+  endl; } else { cout << "⚠️ No config file found. Using default: " << SERVER_IP
+  << ":" << SERVER_PORT << endl;
+  }
+  */
+  cout << "🔒 Config locked to: " << SERVER_IP << ":" << SERVER_PORT << endl;
+}
+
+// ============================================================================
 // HELPER: Send network flows to SIEM
 // ============================================================================
 
 void SendNetworkFlows(NetworkSender &sender, NetworkMonitor &monitor) {
-  /*
-   * Collect current network flows and send to SIEM server.
-   *
-   * Data Flow:
-   *   Agent reads /proc/net/tcp, /proc/net/udp
-   *   → Formats as syslog: "NETWORK_FLOW: TCP 192.168.1.17:443 -> ..."
-   *   → Sends to server port 514
-   *   → Server parses and stores in NetworkFlows table
-   *   → Client displays in Dashboard
-   */
-
   // Only send active (non-listening) connections
   auto flows = monitor.GetActiveConnections();
 
@@ -49,7 +71,7 @@ void SendNetworkFlows(NetworkSender &sender, NetworkMonitor &monitor) {
     string syslog_msg = SyslogFormatter::Format(msg, "network-flow");
 
     if (sender.Send(syslog_msg)) {
-      // Sent successfully (don't spam console for every flow)
+      // Sent successfully
     }
   }
 
@@ -64,17 +86,6 @@ void SendNetworkFlows(NetworkSender &sender, NetworkMonitor &monitor) {
 
 void CheckPortScans(NetworkSender &sender, PortScanDetector &detector,
                     NetworkMonitor &monitor) {
-  /*
-   * Feed network flows to detector and check for scans.
-   *
-   * Data Flow:
-   *   Agent detects scan pattern
-   *   → Formats as syslog: "PORT_SCAN_DETECTED: type=TCP_SYN src=..."
-   *   → Sends to server port 514 (HIGH PRIORITY)
-   *   → Server creates alert in Alerts table
-   *   → Client displays in Alerts tab with severity colors
-   */
-
   // Feed current flows to detector
   auto flows = monitor.CollectFlows();
   for (const auto &flow : flows) {
@@ -106,8 +117,10 @@ void CheckPortScans(NetworkSender &sender, PortScanDetector &detector,
 // ============================================================================
 
 int main() {
+  LoadConfig();
+
   cout << "==========================================" << endl;
-  cout << "  NMS Agent v2.0 - Network Monitor       " << endl;
+  cout << "  NMS Agent v2.1 - Network Monitor       " << endl;
   cout << "==========================================" << endl;
   cout << endl;
   cout << "🔵 Starting NMS Agent..." << endl;
@@ -127,20 +140,20 @@ int main() {
 
   log_sources.push_back(new FileSource("/var/log/syslog", "syslog"));
   log_sources.push_back(new FileSource("/var/log/auth.log", "auth"));
-  log_sources.push_back(new FileSource("./agent_test.log", "test-agent"));
+  // log_sources.push_back(new FileSource("./agent_test.log", "test-agent"));
 
   cout << "📁 Log sources: " << log_sources.size() << " files" << endl;
 
   // ========================================
-  // 3. Initialize Network Monitors (NEW!)
+  // 3. Initialize Network Monitors
   // ========================================
   NetworkMonitor network_monitor;
   PortScanDetector scan_detector;
 
   // Configure port scan detector
-  scan_detector.SetPortThreshold(5);           // 5 ports = scan
-  scan_detector.SetTimeWindow(60);             // 60 second window
-  scan_detector.SetFailureRateThreshold(0.7f); // 70% failure
+  scan_detector.SetPortThreshold(5);
+  scan_detector.SetTimeWindow(60);
+  scan_detector.SetFailureRateThreshold(0.7f);
 
   cout << "🌐 Network flow monitor: enabled" << endl;
   cout << "🔍 Port scan detector: enabled" << endl;
@@ -186,7 +199,7 @@ int main() {
     }
 
     // -------------------------------------
-    // Collect network flows (every 10 seconds)
+    // Collect network flows
     // -------------------------------------
     auto flow_elapsed =
         chrono::duration_cast<chrono::milliseconds>(now - last_flow_check)
@@ -198,7 +211,7 @@ int main() {
     }
 
     // -------------------------------------
-    // Check for port scans (every 5 seconds)
+    // Check for port scans
     // -------------------------------------
     auto scan_elapsed =
         chrono::duration_cast<chrono::milliseconds>(now - last_scan_check)
@@ -209,7 +222,7 @@ int main() {
       last_scan_check = now;
     }
 
-    // Sleep to avoid high CPU usage
+    // Sleep
     this_thread::sleep_for(chrono::milliseconds(LOG_CHECK_INTERVAL));
   }
 
